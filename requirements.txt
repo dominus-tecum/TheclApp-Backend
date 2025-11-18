@@ -10,12 +10,15 @@ click==8.3.0
 colorama==0.4.6
 cryptography==46.0.3
 ecdsa==0.19.1
+email-validator==2.1.1
 fastapi==0.119.0
 greenlet==3.2.4
 h11==0.16.0
 idna==3.11
 jmespath==1.0.1
+openai==1.30.0
 passlib==1.7.4
+phonenumbers==8.13.27
 pyasn1==0.6.1
 pycparser==2.23
 pydantic==2.12.3
@@ -37,5 +40,5 @@ typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.38.0
 wheel==0.45.1
-phonenumbers==8.13.27
-email-validator==2.1.1
+
+
