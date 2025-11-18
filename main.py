@@ -24,7 +24,7 @@ from app.health_progress.kidney.models import KidneyEntry
 from app.health_progress.cancer.models import CancerEntry
 from app.health_progress.kidney.routers import router as kidney_router
 from app.health_progress.cancer.routers import router as cancer_router
-from app.skin_analysis.skin_prediction import router as skin_analysis_router
+# from app.skin_analysis.skin_prediction import router as skin_analysis_router
 from app.prenatal.models import PrenatalEntry
 from app.postnatal.models import PostnatalEntry, PostnatalProfile  # ✅ Only once
 from app.postnatal.routers import router as postnatal_router  # ✅ Only once
@@ -3211,7 +3211,7 @@ app.include_router(urological_router, prefix="/api/health-progress", tags=["Heal
 app.include_router(lifelong_router, prefix="/api/health-progress", tags=["Health Progress"])
 app.include_router(diabetes_router, prefix="/api/health-progress/diabetes", tags=["diabetes"])
 app.include_router(hypertension_router, prefix="/api/health-progress/hypertension", tags=["hypertension"])
-app.include_router(skin_analysis_router, prefix="/api/skin-analysis", tags=["Skin Analysis"]) 
+# app.include_router(skin_analysis_router, prefix="/api/skin-analysis", tags=["Skin Analysis"]) 
 app.include_router(heart_router, prefix="/api/health-progress/heart", tags=["Heart Disease"])
 app.include_router(kidney_router, prefix="/api/health-progress/kidney", tags=["Kidney Disease"])
 app.include_router(cancer_router, prefix="/api/health-progress/cancer", tags=["Cancer"])
