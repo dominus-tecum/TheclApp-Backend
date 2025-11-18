@@ -1,0 +1,162 @@
+// Save this as test_health_data.html and open in browser
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Health Data Debugger</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .debug-section { background: #f5f5f5; padding: 20px; margin: 10px 0; border-radius: 5px; }
+        pre { background: white; padding: 10px; border: 1px solid #ddd; overflow: auto; }
+        .metric { background: #e3f2fd; padding: 5px 10px; margin: 2px; border-radius: 3px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Health Data Structure Debugger</h1>
+        
+        <div class="debug-section">
+            <h3>Test Data (Paste your API response here):</h3>
+            <textarea id="testData" rows="10" cols="100" placeholder='Paste JSON from /api/progress/entries here'></textarea>
+            <br>
+            <button onclick="analyzeData()">Analyze Data Structure</button>
+        </div>
+
+        <div id="results" class="debug-section" style="display:none;">
+            <h3>Analysis Results:</h3>
+            <div id="analysisOutput"></div>
+        </div>
+
+        <div class="debug-section">
+            <h3>Sample Test Data (for comparison):</h3>
+            <pre id="sampleData"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Sample data structure for comparison
+        const sampleData = [
+            {
+                "id": 1,
+                "patient_id": 123,
+                "patient_name": "John Doe",
+                "surgery_type": "abdominal",
+                "dayPostOp": 3,
+                "common_data": {
+                    "pain_level": 5,
+                    "temperature": 37.2,
+                    "blood_pressure_systolic": 120,
+                    "blood_pressure_diastolic": 80
+                },
+                "condition_data": {
+                    "gi_function": "gas_only",
+                    "appetite": "poor",
+                    "wound_condition": "clean_dry",
+                    "mobility": "with_assistance",
+                    "additional_notes": "Patient recovering well"
+                },
+                "status": "good",
+                "updated_at": "2024-01-15T10:30:00"
+            },
+            {
+                "id": 2,
+                "patient_id": 124,
+                "patient_name": "Jane Smith", 
+                "surgery_type": "bariatric",
+                "dayPostOp": 2,
+                "painLevel": 4,
+                "temperature": 36.8,
+                "fluidIntake": 1500,
+                "urineOutput": 800,
+                "nauseaLevel": "mild",
+                "status": "monitor",
+                "updated_at": "2024-01-15T14:20:00"
+            }
+        ];
+
+        // Display sample data
+        document.getElementById('sampleData').textContent = JSON.stringify(sampleData, null, 2);
+
+        function analyzeData() {
+            const testDataInput = document.getElementById('testData').value;
+            const resultsDiv = document.getElementById('results');
+            const outputDiv = document.getElementById('analysisOutput');
+            
+            if (!testDataInput) {
+                alert('Please paste some JSON data first');
+                return;
+            }
+
+            try {
+                const testData = JSON.parse(testDataInput);
+                outputDiv.innerHTML = '';
+                resultsDiv.style.display = 'block';
+
+                if (Array.isArray(testData)) {
+                    testData.forEach((entry, index) => {
+                        outputDiv.innerHTML += analyzeEntry(entry, index);
+                    });
+                } else {
+                    outputDiv.innerHTML = analyzeEntry(testData, 0);
+                }
+
+            } catch (error) {
+                outputDiv.innerHTML = `<div style="color: red;">Error parsing JSON: ${error.message}</div>`;
+                resultsDiv.style.display = 'block';
+            }
+        }
+
+        function analyzeEntry(entry, index) {
+            let html = `<div style="border: 1px solid #ccc; padding: 15px; margin: 10px 0; background: white;">`;
+            html += `<h4>Entry ${index + 1}: ${entry.patient_name || 'Unknown Patient'}</h4>`;
+            
+            // Root level analysis
+            html += `<h5>Root Level Data:</h5>`;
+            const rootMetrics = ['painLevel', 'temperature', 'dayPostOp', 'fluidIntake', 'urineOutput', 'nauseaLevel'];
+            let foundRoot = false;
+            
+            rootMetrics.forEach(metric => {
+                if (entry[metric] !== undefined && entry[metric] !== null && entry[metric] !== '') {
+                    html += `<span class="metric">${metric}: ${entry[metric]}</span>`;
+                    foundRoot = true;
+                }
+            });
+            if (!foundRoot) html += '<em>No root level metrics found</em>';
+            
+            // common_data analysis
+            html += `<h5>common_data:</h5>`;
+            if (entry.common_data && Object.keys(entry.common_data).length > 0) {
+                Object.entries(entry.common_data).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null && value !== '') {
+                        html += `<span class="metric">${key}: ${value}</span>`;
+                    }
+                });
+            } else {
+                html += '<em>No common_data found</em>';
+            }
+            
+            // condition_data analysis  
+            html += `<h5>condition_data:</h5>`;
+            if (entry.condition_data && Object.keys(entry.condition_data).length > 0) {
+                Object.entries(entry.condition_data).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null && value !== '') {
+                        html += `<span class="metric">${key}: ${value}</span>`;
+                    }
+                });
+            } else {
+                html += '<em>No condition_data found</em>';
+            }
+            
+            // Raw data
+            html += `<h5>Raw Data Structure:</h5>`;
+            html += `<pre>${JSON.stringify(entry, null, 2)}</pre>`;
+            
+            html += `</div>`;
+            return html;
+        }
+
+        // Load sample data into textarea for easy testing
+        document.getElementById('testData').value = JSON.stringify(sampleData, null, 2);
+    </script>
+</body>
+</html>

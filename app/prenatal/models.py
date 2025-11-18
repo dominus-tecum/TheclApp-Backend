@@ -1,0 +1,56 @@
+# app/prenatal/models.py
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class PrenatalEntry(Base):
+    __tablename__ = "prenatal_entries"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(String, nullable=False)
+    patient_name = Column(String, nullable=False)
+    submission_date = Column(String, nullable=False)
+    condition_type = Column(String, default='prenatal')
+    
+    # All the flat columns from your SQLite table
+    maternal_temperature = Column(String)
+    blood_pressure_systolic = Column(String)
+    blood_pressure_diastolic = Column(String)
+    maternal_heart_rate = Column(String)
+    respiratory_rate = Column(String)
+    oxygen_saturation = Column(String)
+    weight = Column(String)
+    edema = Column(String)
+    edema_location = Column(Text)
+    headache = Column(String)
+    visual_disturbances = Column(Boolean, default=False)
+    epigastric_pain = Column(Boolean, default=False)
+    nausea_level = Column(String)
+    vomiting_episodes = Column(Integer, default=0)
+    fetal_movement = Column(String)
+    movement_count = Column(Integer, default=0)
+    movement_duration = Column(String)
+    contractions = Column(Boolean, default=False)
+    contraction_frequency = Column(String)
+    contraction_duration = Column(String)
+    contraction_intensity = Column(String)
+    vaginal_bleeding = Column(String)
+    bleeding_color = Column(String)
+    fluid_leak = Column(Boolean, default=False)
+    fluid_color = Column(String)
+    fluid_amount = Column(String)
+    urinary_frequency = Column(String)
+    dysuria = Column(String)
+    urinary_incontinence = Column(Boolean, default=False)
+    appetite = Column(String)
+    heartburn = Column(String)
+    constipation = Column(String)
+    medications_taken = Column(Boolean, default=True)
+    missed_medications = Column(String)
+    gestational_age = Column(String)
+    high_risk = Column(Boolean, default=False)
+    additional_notes = Column(Text)
+    status = Column(String)
+    submitted_at = Column(DateTime)
+    urgency_status = Column(String, default='low')

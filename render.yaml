@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: theclapp-backend
+    env: python
+    plan: hobby
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: theclapp-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+
+databases:
+  - name: theclapp-db
+    plan: hobby
+    databaseName: theclapp

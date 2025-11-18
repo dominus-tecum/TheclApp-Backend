@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Logic Test</title>
+</head>
+<body>
+    <h1>JavaScript Logic Test</h1>
+    <div id="output"></div>
+
+    <script>
+        // Sample cesarean entry data (from your API response)
+        const cesareanEntry = {
+            "id": 1,
+            "patient_name": "Dgdd", 
+            "common_data": {
+                "pain_level": 7,
+                "temperature": "40",
+                "blood_pressure_systolic": "190",
+                "blood_pressure_diastolic": "140", 
+                "heart_rate": "79",
+                "respiratory_rate": "20"
+            },
+            "condition_data": {
+                "fundal_height": "2",
+                "uterine_firmness": "boggy",
+                "lochia_color": "serosa", 
+                "lochia_amount": "moderate",
+                "lochia_odor": "normal",
+                "wound_condition": "gaping",
+                "wound_discharge_type": null,
+                "wound_tenderness": "moderate",
+                "urine_output": "1500",
+                "urinary_retention": false,
+                "bowel_sounds": "present",
+                "flatus_passed": false,
+                "bowel_movement": false,
+                "mobility_level": "bed_bound",
+                "ambulation_distance": "none",
+                "breastfeeding": false,
+                "breast_engorgement": "none",
+                "breast_tenderness": "none", 
+                "nipple_condition": "normal",
+                "feeding_frequency": "none",
+                "additional_notes": "Afggddgyyy",
+                "status": "urgent"
+            },
+            "created_at": "2024-01-01T00:00:00"
+        };
+
+        // Your exact functions from the dashboard
+        function getKeyMetrics(entry, conditionType) {
+            const conditionData = entry.condition_data || {};
+            const commonData = entry.common_data || {};
+            let metrics = [];
+
+            console.log("getKeyMetrics called with conditionType:", conditionType);
+            console.log("Condition data available:", conditionData);
+
+            if (conditionType === 'abdominal') {
+                // Abdominal surgery key metrics
+                if (conditionData.gi_function) {
+                    metrics.push({ label: 'Bowel Function', value: formatMetricValue(conditionData.gi_function) });
+                }
+                if (conditionData.appetite) {
+                    metrics.push({ label: 'Appetite', value: formatMetricValue(conditionData.appetite) });
+                }
+                if (conditionData.wound_condition) {
+                    metrics.push({ label: 'Wound Condition', value: formatMetricValue(conditionData.wound_condition) });
+                }
+            } else if (conditionType === 'cesarean') {
+                // Cesarean section key metrics
+                console.log("Checking cesarean fields...");
+                console.log("uterine_firmness:", conditionData.uterine_firmness);
+                console.log("lochia_amount:", conditionData.lochia_amount);
+                console.log("wound_condition:", conditionData.wound_condition);
+                
+                if (conditionData.uterine_firmness) {
+                    metrics.push({ label: 'Uterine Firmness', value: formatMetricValue(conditionData.uterine_firmness) });
+                }
+                if (conditionData.lochia_amount) {
+                    metrics.push({ label: 'Lochia Amount', value: formatMetricValue(conditionData.lochia_amount) });
+                }
+                if (conditionData.wound_condition) {
+                    metrics.push({ label: 'Incision Condition', value: formatMetricValue(conditionData.wound_condition) });
+                }
+            } else if (conditionType === 'diabetes') {
+                // Diabetes key metrics
+                if (conditionData.blood_glucose) {
+                    metrics.push({ label: 'Blood Glucose', value: conditionData.blood_glucose + ' mg/dL' });
+                }
+                if (conditionData.medication_adherence) {
+                    metrics.push({ label: 'Medication', value: formatMetricValue(conditionData.medication_adherence) });
+                }
+            }
+
+            // Pain level at the top for ALL conditions
+            if (commonData.pain_level !== undefined && commonData.pain_level !== '' && commonData.pain_level !== null) {
+                metrics.unshift({ label: 'Pain Level', value: commonData.pain_level + '/10' });
+            }
+
+            console.log("Final metrics for", conditionType + ":", metrics);
+            return metrics;
+        }
+
+        function formatMetricValue(value) {
+            if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+            if (typeof value === 'string') {
+                return value.split('_').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1)
+                ).join(' ');
+            }
+            return value;
+        }
+
+        // Test the functions
+        function runTests() {
+            const output = document.getElementById('output');
+            let html = '';
+
+            // Test 1: Cesarean with correct conditionType
+            html += '<h2>Test 1: Cesarean with conditionType="cesarean"</h2>';
+            const cesareanMetrics = getKeyMetrics(cesareanEntry, 'cesarean');
+            html += '<p>Metrics found: ' + cesareanMetrics.length + '</p>';
+            cesareanMetrics.forEach(metric => {
+                html += '<p>' + metric.label + ': ' + metric.value + '</p>';
+            });
+
+            // Test 2: Cesarean with wrong conditionType
+            html += '<h2>Test 2: Cesarean with conditionType="abdominal" (WRONG)</h2>';
+            const wrongMetrics = getKeyMetrics(cesareanEntry, 'abdominal');
+            html += '<p>Metrics found: ' + wrongMetrics.length + '</p>';
+            wrongMetrics.forEach(metric => {
+                html += '<p>' + metric.label + ': ' + metric.value + '</p>';
+            });
+
+            // Test 3: Check what conditionType is actually being passed
+            html += '<h2>Test 3: Debug conditionType detection</h2>';
+            html += '<p>Open browser console (F12) to see detailed logs</p>';
+
+            output.innerHTML = html;
+        }
+
+        // Run tests when page loads
+        document.addEventListener('DOMContentLoaded', runTests);
+    </script>
+</body>
+</html>

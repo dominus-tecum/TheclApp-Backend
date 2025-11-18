@@ -1,0 +1,21 @@
+{
+  "endpoint": "/api/auth/me",
+  "data": {
+    "id": 5,
+    "username": "Dgdd",
+    "email": "abc@gmail.com",
+    "role": "patient",
+    "name": "Dgdd",
+    "phone_number": "56888",
+    "emirates_id": null,
+    "passport_number": null,
+    "specialization": null,
+    "department": null
+  },
+  "numeric_ids": [
+    [
+      "id",
+      5
+    ]
+  ]
+}

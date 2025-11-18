@@ -1,0 +1,16 @@
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJEZ2RkIiwiZXhwIjoxNzYyMjk3MDYyfQ.3Y2XLhn0qhtuBj3AjaqOssToV-hH7xp-Nla0imLRmD8",
+  "token_type": "bearer",
+  "user": {
+    "id": 5,
+    "username": "Dgdd",
+    "email": "abc@gmail.com",
+    "role": "patient",
+    "name": "Dgdd",
+    "phone_number": "56888",
+    "emirates_id": null,
+    "passport_number": null,
+    "specialization": null,
+    "department": null
+  }
+}
