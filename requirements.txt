@@ -16,6 +16,7 @@ greenlet==3.2.4
 h11==0.16.0
 idna==3.11
 jmespath==1.0.1
+langdetect==1.0.9
 openai==1.30.0
 passlib==1.7.4
 phonenumbers==8.13.27
