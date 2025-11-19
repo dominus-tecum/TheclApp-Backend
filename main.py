@@ -47,11 +47,92 @@ try:
 except Exception as e:
     print(f"⚠️ Postnatal profiles table creation note: {e}")
 
+
+# ✅ ADD MISSING TABLE CREATIONS HERE:
+try:
+    OrthopedicSurgeryEntry.__table__.create(engine, checkfirst=True)
+    print("✅ orthopedic_surgery_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Orthopedic entries table creation note: {e}")
+
+try:
+    UrologicalSurgeryEntry.__table__.create(engine, checkfirst=True)
+    print("✅ urological_surgery_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Urological entries table creation note: {e}")
+
+try:
+    GynecologicSurgeryEntry.__table__.create(engine, checkfirst=True)
+    print("✅ gynecologic_surgery_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Gynecologic entries table creation note: {e}")
+
+try:
+    CesareanSectionEntry.__table__.create(engine, checkfirst=True)
+    print("✅ cesarean_section_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Cesarean entries table creation note: {e}")
+
+try:
+    HypertensionEntry.__table__.create(engine, checkfirst=True)
+    print("✅ hypertension_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Hypertension entries table creation note: {e}")
+
+try:
+    DiabetesEntry.__table__.create(engine, checkfirst=True)
+    print("✅ diabetes_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Diabetes entries table creation note: {e}")
+
+try:
+    BariatricEntry.__table__.create(engine, checkfirst=True)
+    print("✅ bariatric_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Bariatric entries table creation note: {e}")
+
+try:
+    BurnCareEntry.__table__.create(engine, checkfirst=True)
+    print("✅ burn_care_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Burn care entries table creation note: {e}")
+
+try:
+    GeneralHealthEntry.__table__.create(engine, checkfirst=True)
+    print("✅ general_health_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ General health entries table creation note: {e}")
+
+try:
+    HeartEntry.__table__.create(engine, checkfirst=True)
+    print("✅ heart_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Heart entries table creation note: {e}")
+
+try:
+    KidneyEntry.__table__.create(engine, checkfirst=True)
+    print("✅ kidney_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Kidney entries table creation note: {e}")
+
+try:
+    CancerEntry.__table__.create(engine, checkfirst=True)
+    print("✅ cancer_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Cancer entries table creation note: {e}")
+
+try:
+    PrenatalEntry.__table__.create(engine, checkfirst=True)
+    print("✅ prenatal_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Prenatal entries table creation note: {e}")
+
 # Check users
 from app.database import SessionLocal
 db = SessionLocal()
 users = db.query(User).all()
-db.close()
+db.close()    
+
 
 app = FastAPI(
     title="Healthcare Management API",
