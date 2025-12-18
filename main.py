@@ -281,39 +281,42 @@ async def check_general_entry(patient_id: str, date: str):
 #     TEST ENDPOINT
 #===========================================================
 
-
-
-
-
-app = FastAPI()  # If you already have app = FastAPI(), add route below it
-
-@app.get("/db-check")  # Add this route
-async def db_check():
-    """Check database tables - simplest version"""
+@app.post("/create-patients-table")
+def create_patients_table():
     import sqlite3
-    import os
     
-    # Try these database paths
-    for path in ["/tmp/render.db", "./hospiapp.db", "/tmp/hospiapp.db"]:
-        if os.path.exists(path):
-            try:
-                conn = sqlite3.connect(path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                tables = [row[0] for row in cursor.fetchall()]
-                conn.close()
-                return {
-                    "database_file": path,
-                    "tables": tables,
-                    "table_count": len(tables),
-                    "has_patients": "patients" in tables
-                }
-            except Exception as e:
-                return {"error": f"Could not read {path}: {str(e)}"}
+    conn = sqlite3.connect("./hospiapp.db")
+    cursor = conn.cursor()
     
-    return {"error": "No database file found in common locations"}
+    # Create patients table
+    cursor.execute("""
+        CREATE TABLE patients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            birth_date TEXT,
+            phone_number TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Add your user as patient
+    cursor.execute("""
+        INSERT INTO patients (user_id, name, email, phone_number)
+        VALUES (1, 'Achu', 'achu@gmail.com', '+251915652323')
+    """)
+    
+    conn.commit()
+    conn.close()
+    
+    return {"status": "patients table created and user added"}
 
-# Keep your existing routes below...
+
+
+
+
 
 
 #===========================================================
