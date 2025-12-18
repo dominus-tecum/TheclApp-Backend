@@ -37,6 +37,35 @@ async def check_existing_entry(
         entry_id=existing_entry.id if existing_entry else None
     )
 
+
+
+
+@router.get("/patient/{patient_id}")
+async def get_patient_info(
+    patient_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get patient information needed for prenatal tracking
+    """
+    # This should query your Patients table
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    return {
+        "patient_id": patient.id,
+        "patient_name": patient.name,
+        "edd": patient.edd,  # Expected Due Date
+        "lmp": patient.lmp,  # Last Menstrual Period
+        "high_risk": patient.high_risk or False
+    }
+
+
+
+
+
 @router.get("/entries")
 async def get_all_prenatal_entries(db: Session = Depends(get_db)):
     """

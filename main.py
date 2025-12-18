@@ -30,6 +30,26 @@ from app.skin_analysis.skin_prediction import router as skin_analysis_router
 from app.prenatal.models import PrenatalEntry
 from app.postnatal.models import PostnatalEntry, PostnatalProfile  # ✅ Only once
 from app.postnatal.routers import router as postnatal_router  # ✅ Only once
+from app.fertility.models import FertilityEntry, FertilityProfile
+from app.fertility.routers import router as fertility_router
+from fastapi import FastAPI, Request, Depends, HTTPException  # Add Depends, HTTPException
+from app.authentication.auth import get_current_user  # Add this line
+from sqlalchemy.orm import Session  # Add this if missing
+from app.database import get_db
+from app.fertility.services import PatientService, FertilityProfileService
+
+from app.fertility.routers import router as fertility_router
+
+print("=" * 60)
+print("🔍 DEBUG: Importing fertility router")
+print(f"🔍 Imported from: app.fertility.routers")
+print(f"🔍 Router object: {fertility_router}")
+print(f"🔍 Router routes: {[route.path for route in fertility_router.routes]}")
+print("=" * 60)
+
+
+
+
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -126,6 +146,24 @@ try:
     print("✅ prenatal_entries table created successfully")
 except Exception as e:
     print(f"⚠️ Prenatal entries table creation note: {e}")
+
+
+# Add this with your other table creations:
+try:
+    FertilityEntry.__table__.create(engine, checkfirst=True)
+    print("✅ fertility_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Fertility entries table creation note: {e}")
+
+try:
+    FertilityProfile.__table__.create(engine, checkfirst=True)
+    print("✅ fertility_profiles table created successfully")
+except Exception as e:
+    print(f"⚠️ Fertility profiles table creation note: {e}")
+
+
+
+
 
 # Check users
 from app.database import SessionLocal
@@ -237,6 +275,111 @@ async def check_general_entry(patient_id: str, date: str):
             db.close()
     except Exception as e:
         return {"exists": False, "error": "Internal server error"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.get("/api/patients/{patient_id}")
+def get_patient_main(
+    patient_id: str,
+    db: Session = Depends(get_db)
+):
+    """Main patient endpoint that redirects to fertility endpoint"""
+    print(f"🔍 [MAIN-PATIENT] Frontend called /api/patients/{patient_id}")
+    
+    # Copy the exact logic from your fertility endpoint
+    patient_service = PatientService(db)
+    patient = None
+    
+    # First try by user_id
+    patient = patient_service.get_patient_by_user_id(patient_id)
+    
+    # If not found, try as integer patient_id
+    if not patient:
+        try:
+            patient_id_int = int(patient_id)
+            patient = patient_service.get_patient(patient_id_int)
+        except ValueError:
+            pass
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Get fertility profile
+    profile_service = FertilityProfileService(db)
+    profile = profile_service.get_profile(patient.id)
+    
+    # Return same format as fertility endpoint
+    return {
+        "id": patient.id,
+        "user_id": patient.user_id,
+        "name": patient.name,
+        "email": patient.email,
+        "birth_date": str(patient.birth_date) if patient.birth_date else None,
+        "phone_number": getattr(patient, 'phone_number', None),
+        "created_at": patient.created_at,
+        "updated_at": getattr(patient, 'updated_at', None),
+        "fertility_profile": {
+            "id": profile.id if profile else None,
+            "patient_id": patient.id,
+            "cycle_length": profile.cycle_length if profile else None,
+            "period_length": profile.period_length if profile else None,
+            "last_period_date": profile.last_period_date if profile else None,
+            "trying_to_conceive": profile.trying_to_conceive if profile else None,
+            "fertility_issues": profile.fertility_issues if profile else [],
+            "high_risk": profile.high_risk if profile else None,
+            "created_at": profile.created_at if profile else None,
+            "updated_at": profile.updated_at if profile else None
+        } if profile else None
+    }
+
+
+
+
+
+
+
+
+
+     # Add this function BEFORE the patient endpoint
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+
+
+
+# Add this RIGHT AFTER the check_general_entry function
+
+
+
+
+# Add this RIGHT AFTER the check_general_entry function (around line 180)
+
 
 
 @app.get("/staff/health-progress", response_class=HTMLResponse, tags=["Staff Web"])
@@ -3300,6 +3443,23 @@ app.include_router(kidney_router, prefix="/api/health-progress/kidney", tags=["K
 app.include_router(cancer_router, prefix="/api/health-progress/cancer", tags=["Cancer"])
 app.include_router(prenatal_router, prefix="/api/prenatal", tags=["Prenatal"])
 app.include_router(postnatal_router, prefix="/api/postnatal", tags=["Postnatal"])
+app.include_router(fertility_router, prefix="/api/fertility", tags=["Fertility"])
+
+
+
+# Add this RIGHT BEFORE the last line of main.py
+
+@app.on_event("startup")
+async def startup_event():
+    print("Healthcare Management API starting up...")
+    
+    # Print all registered routes
+    print("\n📋 REGISTERED ROUTES:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"  {route.path}")
+    print()
+
 
 
 # Optional events (keep these)
