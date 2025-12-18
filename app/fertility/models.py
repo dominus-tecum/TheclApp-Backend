@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import json
 
-Base = declarative_base()
+from app.database_base import Base
 
 # Enums for Fertility Tracking
 class CervicalFluidType(str, enum.Enum):
