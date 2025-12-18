@@ -1,11 +1,17 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database_base import Base  # <-- use database_base.py
+
+# Import Patient's Base
+from app.fertility.models import Base
 
 DATABASE_URL = "sqlite:///./hospiapp.db"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# IMPORT ALL MODELS that use this Base
+from app.fertility.models import Patient, FertilityEntry, FertilityProfile, CycleAnalysis, FertilityInsight
+# Add other model imports if they use the same Base
 
 def get_db():
     db = SessionLocal()
@@ -14,5 +20,5 @@ def get_db():
     finally:
         db.close()
 
-# optional: create tables
+# Create tables for ALL imported models
 Base.metadata.create_all(bind=engine)
