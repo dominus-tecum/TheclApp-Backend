@@ -1,5 +1,3 @@
-# Replace entire .gitignore with proper version
-cat > .gitignore << 'EOF'
 # Python
 __pycache__/
 *.py[cod]
@@ -24,6 +22,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.whl
 
 # Node.js/React Native
 node_modules/
@@ -49,10 +52,14 @@ venv.bak/
 .idea/
 *.swp
 *.swo
+*.code-workspace
+*.iml
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+*.lnk
 
 # Database
 *.db
@@ -60,6 +67,8 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
+*.log.*
 
 # Environment variables
 .env.local
@@ -68,6 +77,11 @@ Thumbs.db
 # Temporary files
 temp/
 tmp/
+*.tmp
+*.temp
+~$*
+*.bak
+*.backup
 
 # Machine Learning models & data (CRITICAL - ADDED)
 *.h5
@@ -87,7 +101,12 @@ post_train_test_picture/
 *.jpg
 *.jpeg
 *.png
+*.gif
+*.bmp
 *.docx
+*.pdf
+*.ppt
+*.pptx
 ~$*.docx  # Temporary Word files
 
 # Frontend files in backend (if accidentally added)
@@ -100,4 +119,33 @@ data/
 *.csv
 *.parquet
 *.feather
-EOF
+*.hdf5
+*.npy
+
+# ========== NEWLY ADDED ==========
+
+# Binary/Executable files
+*.exe
+*.bin
+python
+python.exe
+python3
+python3.exe
+*.dll
+*.so
+*.pyd
+
+# Downloaded scripts/installers
+get-pip.py
+*.msi
+*.pkg
+*.dmg
+
+# Package manager files in wrong locations
+ModelTraining/poetry.lock
+ModelTraining/pyproject.toml
+ModelTraining/Pipfile
+ModelTraining/Pipfile.lock
+ModelTraining/requirements.txt
+ModelTraining/package-lock.json
+ModelTraining/package.json
