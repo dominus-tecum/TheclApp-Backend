@@ -277,15 +277,48 @@ async def check_general_entry(patient_id: str, date: str):
         return {"exists": False, "error": "Internal server error"}
 
 
+#=======================================================
+#     TEST ENDPOINT
+#===========================================================
 
 
 
 
 
+app = FastAPI()  # If you already have app = FastAPI(), add route below it
+
+@app.get("/db-check")  # Add this route
+async def db_check():
+    """Check database tables - simplest version"""
+    import sqlite3
+    import os
+    
+    # Try these database paths
+    for path in ["/tmp/render.db", "./hospiapp.db", "/tmp/hospiapp.db"]:
+        if os.path.exists(path):
+            try:
+                conn = sqlite3.connect(path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = [row[0] for row in cursor.fetchall()]
+                conn.close()
+                return {
+                    "database_file": path,
+                    "tables": tables,
+                    "table_count": len(tables),
+                    "has_patients": "patients" in tables
+                }
+            except Exception as e:
+                return {"error": f"Could not read {path}: {str(e)}"}
+    
+    return {"error": "No database file found in common locations"}
+
+# Keep your existing routes below...
 
 
-
-
+#===========================================================
+#     TEST ENDPOINT
+#===========================================================
 
 
 
