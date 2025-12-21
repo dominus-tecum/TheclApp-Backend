@@ -1,6 +1,7 @@
 # app/security/routers.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func  # ADD THIS IMPORT
 from typing import List
 from app.database import get_db
 from app.security.models import SecurityEvent
@@ -40,35 +41,30 @@ async def get_security_events(
     return events
 
 
-# In app/security/routers.py, add:
 @router.get("/dashboard")
 def security_dashboard(db: Session = Depends(get_db)):
     # Get recent events
-    recent_events = db.query(models.SecurityEvent).order_by(
-        models.SecurityEvent.created_at.desc()
+    recent_events = db.query(SecurityEvent).order_by(  # CHANGE: models.SecurityEvent → SecurityEvent
+        SecurityEvent.created_at.desc()
     ).limit(50).all()
     
     # Get statistics
     event_counts = db.query(
-        models.SecurityEvent.event_type,
-        func.count(models.SecurityEvent.id)
-    ).group_by(models.SecurityEvent.event_type).all()
+        SecurityEvent.event_type,  # CHANGE: models.SecurityEvent → SecurityEvent
+        func.count(SecurityEvent.id)
+    ).group_by(SecurityEvent.event_type).all()
     
     severity_counts = db.query(
-        models.SecurityEvent.severity,
-        func.count(models.SecurityEvent.id)
-    ).group_by(models.SecurityEvent.severity).all()
+        SecurityEvent.severity,  # CHANGE: models.SecurityEvent → SecurityEvent
+        func.count(SecurityEvent.id)
+    ).group_by(SecurityEvent.severity).all()
     
     return {
         "recent_events": recent_events,
         "statistics": {
             "by_type": dict(event_counts),
             "by_severity": dict(severity_counts),
-            "total_events": db.query(models.SecurityEvent).count()
+            "total_events": db.query(SecurityEvent).count()
         },
         "backend_status": "operational"
     }
-
-
-
-
