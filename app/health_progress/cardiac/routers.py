@@ -161,3 +161,61 @@ async def get_patient_cardiac_entries(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving patient cardiac entries: {str(e)}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        from sqlalchemy import text
+
+@router.post("/fix-missing-table")
+async def fix_missing_cardiac_table(
+    db: Session = Depends(get_db)
+):
+    """
+    TEMPORARY: Create missing cardiac_surgery_entries table
+    Call once: curl -X POST https://theclapp-backend.onrender.com/api/health-progress/cardiac/fix-missing-table
+    Then delete this endpoint
+    """
+    try:
+        # SQLite CREATE TABLE for cardiac
+        sql = text("""
+            CREATE TABLE IF NOT EXISTS cardiac_surgery_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL,
+                patient_name TEXT NOT NULL,
+                surgery_type TEXT DEFAULT 'cardiac',
+                submission_date TEXT NOT NULL,
+                common_data TEXT,
+                condition_data TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(patient_id, submission_date)
+            )
+        """)
+        
+        db.execute(sql)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "SQLite table 'cardiac_surgery_entries' created",
+            "note": "Delete this endpoint after use"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        if "already exists" in error_msg:
+            return {"success": True, "message": "Table already exists"}
+        return {"success": False, "error": error_msg}
