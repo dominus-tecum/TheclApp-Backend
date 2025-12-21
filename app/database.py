@@ -1,10 +1,26 @@
+# app/database.py
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from pathlib import Path
 
 # Import the SINGLE, SHARED Base that ALL models use
-from app.database_base import Base  # <-- CHANGE: Use database_base.Base
+from app.database_base import Base
 
-DATABASE_URL = "sqlite:///./hospiapp.db"
+# ========== ENVIRONMENT-BASED DATABASE SELECTION ==========
+def get_database_url():
+    """Determine database file based on environment"""
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    
+    if environment == "production":
+        return "sqlite:///./hospiapp_production.db"
+    elif environment == "staging":
+        return "sqlite:///./hospiapp_staging.db"
+    else:  # development
+        return "sqlite:///./hospiapp.db"
+
+DATABASE_URL = get_database_url()
+# ===========================================================
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -13,13 +29,14 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # 1. Core models (User, Prescription, Appointment)
 from app.models import User, Prescription, Appointment
 
-# 2. Fertility models - MUST FIRST fix app/fertility/models.py:
-#    Change line 8 from "Base = declarative_base()" to "from app.database_base import Base"
+# 2. Fertility models
 from app.fertility.models import Patient, FertilityEntry, FertilityProfile, CycleAnalysis, FertilityInsight
 
-# 3. Add other models as needed:
+# 3. Security models
+from app.security.models import SecurityEvent  # ✅ CORRECT PLACE
+
+# 4. Add other models as needed:
 # from app.medical_record.models import MedicalRecord
-# from app.other_module.models import OtherModel
 # ===========================================================
 
 def get_db():
@@ -30,5 +47,7 @@ def get_db():
         db.close()
 
 # Create tables for ALL imported models
+environment = os.getenv("ENVIRONMENT", "development").lower()
 Base.metadata.create_all(bind=engine)
-print(f"✅ Creating tables: {list(Base.metadata.tables.keys())}")
+print(f"✅ [{environment.upper()}] Database initialized: {DATABASE_URL}")
+print(f"   Tables: {list(Base.metadata.tables.keys())}")

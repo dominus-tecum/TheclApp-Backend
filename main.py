@@ -37,8 +37,9 @@ from app.authentication.auth import get_current_user  # Add this line
 from sqlalchemy.orm import Session  # Add this if missing
 from app.database import get_db
 from app.fertility.services import PatientService, FertilityProfileService
-
+from app.security.routers import router as security_router
 from app.fertility.routers import router as fertility_router
+
 
 print("=" * 60)
 print("🔍 DEBUG: Importing fertility router")
@@ -3480,6 +3481,7 @@ app.include_router(cancer_router, prefix="/api/health-progress/cancer", tags=["C
 app.include_router(prenatal_router, prefix="/api/prenatal", tags=["Prenatal"])
 app.include_router(postnatal_router, prefix="/api/postnatal", tags=["Postnatal"])
 app.include_router(fertility_router, prefix="/api/fertility", tags=["Fertility"])
+app.include_router(security_router, tags=["Security"])
 
 
 

@@ -38,6 +38,14 @@ def create_refresh_token(username: str, user_id: int):
     
     return refresh_token
 
+
+
+
+
+
+
+
+
 @router.post("/register", response_model=UserRead)
 def register(user: UserRegister, db: Session = Depends(get_db)):
     print(f"🔍 REGISTER - Received: {user.dict()}")
@@ -55,6 +63,32 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
     created_user = create_user(db, user)
     print(f"✅ REGISTER - User created: {created_user.id}, {created_user.email}, {created_user.username}")
     return created_user
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
