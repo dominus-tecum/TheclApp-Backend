@@ -1,6 +1,7 @@
 # app/health_progress/cardiac/routers.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text 
 from app.database import get_db
 from . import services, schemas
 
@@ -169,14 +170,7 @@ async def get_patient_cardiac_entries(
 
 
 
-
-
-
-
-
-
-
-        from sqlalchemy import text
+        
 
 @router.post("/fix-missing-table")
 async def fix_missing_cardiac_table(

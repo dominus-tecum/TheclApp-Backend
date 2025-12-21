@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.database import get_db
 from . import schemas, services
 import logging
@@ -125,3 +126,63 @@ async def get_all_abdominal_entries():
     query = "SELECT * FROM abdominal_surgery_entries ORDER BY submission_date DESC, created_at DESC"
     entries = await database.fetch_all(query)
     return {"entries": entries}
+
+
+
+
+
+
+
+# Add this endpoint AFTER your existing routes
+@router.post("/fix-missing-table")
+async def fix_missing_table(
+    db: Session = Depends(get_db)  # Use your existing get_db dependency
+):
+    """
+    TEMPORARY: Create missing abdominal_entries table
+    Call once: curl -X POST https://theclapp-backend.onrender.com/api/progress/abdominal-entries/fix-missing-table
+    Then delete this endpoint
+    """
+    try:
+        # SQLite CREATE TABLE
+        sql = text("""
+            CREATE TABLE IF NOT EXISTS abdominal_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL,
+                patient_name TEXT NOT NULL,
+                submission_date TEXT NOT NULL,
+                common_data TEXT,
+                condition_data TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(patient_id, submission_date)
+            )
+        """)
+        
+        db.execute(sql)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "SQLite table 'abdominal_entries' created",
+            "note": "Delete this endpoint after use"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        if "already exists" in error_msg:
+            return {"success": True, "message": "Table already exists"}
+        return {"success": False, "error": error_msg}
+
+
+
+
+
+
+
+
+
+
+
+
+
