@@ -19,6 +19,7 @@ from app.health_progress.bariatric.models import BariatricEntry
 from app.health_progress.burn_care.models import BurnCareEntry
 from app.health_progress.general.models import GeneralHealthEntry
 from app.health_progress.heart.models import HeartEntry
+from app.health_progress.cardiac.models import CardiacSurgeryEntry
 from app.health_progress.diabetes.routers import router as diabetes_router
 from app.health_progress.hypertension.routers import router as hypertension_router
 from app.health_progress.heart.routers import router as heart_router
@@ -39,6 +40,7 @@ from app.database import get_db
 from app.fertility.services import PatientService, FertilityProfileService
 from app.security.routers import router as security_router
 from app.fertility.routers import router as fertility_router
+
 
 
 print("=" * 60)
@@ -162,6 +164,17 @@ try:
 except Exception as e:
     print(f"⚠️ Fertility profiles table creation note: {e}")
 
+try:
+    AbdominalEntry.__table__.create(engine, checkfirst=True)
+    print("✅ abdominal_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Abdominal entries table creation note: {e}")
+
+try:
+    CardiacSurgeryEntry.__table__.create(engine, checkfirst=True)
+    print("✅ cardiac_surgery_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Cardiac entries table creation note: {e}")
 
 
 
