@@ -20,6 +20,7 @@ from app.health_progress.burn_care.models import BurnCareEntry
 from app.health_progress.general.models import GeneralHealthEntry
 from app.health_progress.heart.models import HeartEntry
 from app.health_progress.cardiac.models import CardiacSurgeryEntry
+from app.health_progress.abdominal.models import AbdominalEntry
 from app.health_progress.diabetes.routers import router as diabetes_router
 from app.health_progress.hypertension.routers import router as hypertension_router
 from app.health_progress.heart.routers import router as heart_router
