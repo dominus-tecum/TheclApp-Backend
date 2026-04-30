@@ -36,7 +36,8 @@ class UrologicalProgressService:
                 
                 # ✅ DIRECT JSON STORAGE like cesarean
                 common_data=entry_data.get('common_data', {}),
-                condition_data=entry_data.get('condition_data', {})
+                condition_data=entry_data.get('condition_data', {}),
+                photo_urls=entry_data.get('photo_urls', [])
             )
             
             print("🔍 UROLOGICAL SERVICES: Database entry created, about to add to session...")
@@ -136,5 +137,50 @@ class UrologicalProgressService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Error deleting urological entry: {str(e)}")
+
+            
+    def get_entry_by_patient_and_date(self, patient_id: int, submission_date: str):
+        """Get entry by patient ID and submission date"""
+        from datetime import datetime
+        if isinstance(submission_date, str):
+           submission_date_obj = datetime.strptime(submission_date, '%Y-%m-%d').date()
+        else:
+           submission_date_obj = submission_date
+    
+        return self.db.query(UrologicalSurgeryEntry).filter(
+        UrologicalSurgeryEntry.patient_id == patient_id,
+        UrologicalSurgeryEntry.submission_date == submission_date_obj
+        ).first()
+
+
+
+
+    def update_entry(self, entry_id: int, entry_data: dict):
+        """Update existing entry"""
+        from datetime import datetime
+    
+        entry = self.db.query(UrologicalSurgeryEntry).filter(UrologicalSurgeryEntry.id == entry_id).first()
+        if entry:
+            submission_date_str = entry_data.get('submission_date')
+            if submission_date_str:
+                entry.submission_date = datetime.strptime(submission_date_str, '%Y-%m-%d').date()
+        
+            entry.patient_name = entry_data.get('patient_name', entry.patient_name)
+            entry.common_data = entry_data.get('common_data', entry.common_data)
+            entry.condition_data = entry_data.get('condition_data', entry.condition_data)
+            entry.photo_urls = entry_data.get('photo_urls', entry.photo_urls)
+        
+            self.db.commit()
+            self.db.refresh(entry)
+        return entry
+
+
+
+     
+
+           
+
+
+       
 
          

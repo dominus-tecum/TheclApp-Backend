@@ -19,27 +19,26 @@ class GeneralProgressService:
         # Health trend urgency
         health_trend = entry_data.get('health_trend')
         if health_trend == 'significantly_worse':
-            urgency_score += 3  # Rapid decline
+            urgency_score += 3
         elif health_trend == 'slightly_worse':
-            urgency_score += 1  # Slow decline
+            urgency_score += 1
         
         # Overall wellbeing urgency
         wellbeing = entry_data.get('overall_wellbeing', 5)
         if wellbeing <= 2:
-            urgency_score += 3  # Very poor wellbeing
+            urgency_score += 3
         elif wellbeing <= 4:
-            urgency_score += 1  # Poor wellbeing
+            urgency_score += 1
         
         # Primary symptom severity urgency
         symptom_severity = entry_data.get('primary_symptom_severity', 0)
         if symptom_severity >= 9:
-            urgency_score += 3  # Severe symptoms
+            urgency_score += 3
         elif symptom_severity >= 7:
-            urgency_score += 2  # Moderate-severe symptoms
+            urgency_score += 2
         elif symptom_severity >= 5:
-            urgency_score += 1  # Moderate symptoms
+            urgency_score += 1
         
-        # Determine urgency level
         if urgency_score >= 5:
             return "high"
         elif urgency_score >= 3:
@@ -49,47 +48,65 @@ class GeneralProgressService:
 
     def create_entry(self, entry_data: Dict[str, Any]) -> GeneralHealthEntry:
         """
-        Create a new general health progress entry with flattened structure
+        Create or update a general health progress entry
         """
         try:
             print("🔍 GENERAL SERVICES: Starting create_entry with flattened structure...")
             
-            # ✅ Calculate urgency based on medical values
+            # CHECK FOR EXISTING ENTRY FIRST
+            existing_entry = self.db.query(GeneralHealthEntry).filter(
+                GeneralHealthEntry.patient_id == entry_data.get('patient_id'),
+                GeneralHealthEntry.submission_date == entry_data.get('submission_date')
+            ).first()
+            
             urgency_status = self.calculate_urgency_level(entry_data)
-            print(f"🎯 GENERAL SERVICES: Calculated urgency: {urgency_status}")
             
-            # ✅ Create entry with EXACT frontend data types
-            db_entry = GeneralHealthEntry(
-                # Basic info
-                patient_id=entry_data.get('patient_id'),
-                patient_name=entry_data.get('patient_name', ''),
-                submission_date=entry_data.get('submission_date'),
-                status=entry_data.get('status', 'pending'),
+            if existing_entry:
+                print(f"🔄 GENERAL SERVICES: Updating existing entry for {entry_data.get('submission_date')}")
                 
-                # General health specific fields
-                health_trend=entry_data.get('health_trend'),
-                overall_wellbeing=entry_data.get('overall_wellbeing'),
-                primary_symptom_severity=entry_data.get('primary_symptom_severity'),
-                primary_symptom_description=entry_data.get('primary_symptom_description'),
-                notes=entry_data.get('notes'),
+                existing_entry.health_trend = entry_data.get('health_trend')
+                existing_entry.overall_wellbeing = entry_data.get('overall_wellbeing')
+                existing_entry.primary_symptom_severity = entry_data.get('primary_symptom_severity')
+                existing_entry.primary_symptom_description = entry_data.get('primary_symptom_description')
+                existing_entry.notes = entry_data.get('notes')
+                existing_entry.status = entry_data.get('status', 'pending')
+                existing_entry.submitted_at = datetime.utcnow()
+                existing_entry.urgency_status = urgency_status
                 
-                # Condition type and timestamps
-                condition_type=entry_data.get('condition_type', 'general_health'),
-                submitted_at=datetime.utcnow(),
-                urgency_status=urgency_status  # ✅ Use calculated urgency
-            )
+                self.db.commit()
+                self.db.refresh(existing_entry)
+                print(f"✅ GENERAL SERVICES: Entry updated successfully with ID: {existing_entry.id}")
+                return existing_entry
             
-            self.db.add(db_entry)
-            self.db.commit()
-            self.db.refresh(db_entry)
-            
-            print(f"✅ GENERAL SERVICES: Entry created successfully with ID: {db_entry.id}, Urgency: {db_entry.urgency_status}")
-            return db_entry
+            else:
+                print(f"🆕 GENERAL SERVICES: Creating new entry for {entry_data.get('submission_date')}")
+                
+                db_entry = GeneralHealthEntry(
+                    patient_id=entry_data.get('patient_id'),
+                    patient_name=entry_data.get('patient_name', ''),
+                    submission_date=entry_data.get('submission_date'),
+                    status=entry_data.get('status', 'pending'),
+                    health_trend=entry_data.get('health_trend'),
+                    overall_wellbeing=entry_data.get('overall_wellbeing'),
+                    primary_symptom_severity=entry_data.get('primary_symptom_severity'),
+                    primary_symptom_description=entry_data.get('primary_symptom_description'),
+                    notes=entry_data.get('notes'),
+                    condition_type=entry_data.get('condition_type', 'general_health'),
+                    submitted_at=datetime.utcnow(),
+                    urgency_status=urgency_status
+                )
+                
+                self.db.add(db_entry)
+                self.db.commit()
+                self.db.refresh(db_entry)
+                
+                print(f"✅ GENERAL SERVICES: Entry created successfully with ID: {db_entry.id}")
+                return db_entry
             
         except Exception as e:
             self.db.rollback()
             print(f"❌ GENERAL SERVICES: Error: {str(e)}")
-            raise Exception(f"Error creating general health entry: {str(e)}")
+            raise Exception(f"Error creating/updating general health entry: {str(e)}")
 
     def get_all_entries(self) -> List[GeneralHealthEntry]:
         """

@@ -88,34 +88,66 @@ class KidneyProgressService:
 
     def create_entry(self, entry_data: Dict[str, Any]) -> KidneyEntry:
         """
-        Create a new kidney disease progress entry with flattened structure
+        Create or update a kidney disease progress entry
         """
         try:
             print("🔍 KIDNEY SERVICES: Starting create_entry with flattened structure...")
             
-            # ✅ Calculate urgency based on medical values
-            urgency_status = self.calculate_urgency_level(entry_data)
-            print(f"🎯 KIDNEY SERVICES: Calculated urgency: {urgency_status}")
+            # ✅ CHECK FOR EXISTING ENTRY FIRST
+            existing_entry = self.db.query(KidneyEntry).filter(
+                KidneyEntry.patient_id == entry_data.get('patient_id'),
+                KidneyEntry.submission_date == entry_data.get('submission_date')
+            ).first()
             
-            # ✅ Create entry with EXACT frontend data types
+            if existing_entry:
+                print(f"🔄 KIDNEY SERVICES: Updating existing entry for {entry_data.get('submission_date')}")
+                
+                # UPDATE existing entry instead of creating new
+                existing_entry.blood_pressure_systolic = entry_data.get('blood_pressure_systolic')
+                existing_entry.blood_pressure_diastolic = entry_data.get('blood_pressure_diastolic')
+                existing_entry.energy_level = entry_data.get('energy_level')
+                existing_entry.sleep_hours = entry_data.get('sleep_hours')
+                existing_entry.sleep_quality = entry_data.get('sleep_quality')
+                existing_entry.medications = entry_data.get('medications')
+                existing_entry.symptoms = entry_data.get('symptoms')
+                existing_entry.notes = entry_data.get('notes')
+                existing_entry.status = entry_data.get('status', 'pending')
+                existing_entry.weight = entry_data.get('weight')
+                existing_entry.swelling_level = entry_data.get('swelling_level')
+                existing_entry.urine_output = entry_data.get('urine_output')
+                existing_entry.fluid_intake = entry_data.get('fluid_intake')
+                existing_entry.breathing_difficulty = entry_data.get('breathing_difficulty')
+                existing_entry.fatigue_level = entry_data.get('fatigue_level')
+                existing_entry.nausea_level = entry_data.get('nausea_level')
+                existing_entry.itching_level = entry_data.get('itching_level')
+                existing_entry.submitted_at = datetime.utcnow()
+                
+                # Recalculate urgency
+                urgency_status = self.calculate_urgency_level(entry_data)
+                existing_entry.urgency_status = urgency_status
+                
+                self.db.commit()
+                self.db.refresh(existing_entry)
+                print(f"✅ KIDNEY SERVICES: Entry updated successfully with ID: {existing_entry.id}")
+                return existing_entry
+            
+            # If no existing entry, create new
+            print("🆕 KIDNEY SERVICES: Creating new entry...")
+            urgency_status = self.calculate_urgency_level(entry_data)
+            
             db_entry = KidneyEntry(
-                # Basic info
                 patient_id=entry_data.get('patient_id'),
                 patient_name=entry_data.get('patient_name', ''),
                 submission_date=entry_data.get('submission_date'),
                 status=entry_data.get('status', 'pending'),
-                
-                # Common data (exact frontend types)
                 blood_pressure_systolic=entry_data.get('blood_pressure_systolic'),
                 blood_pressure_diastolic=entry_data.get('blood_pressure_diastolic'),
                 energy_level=entry_data.get('energy_level'),
-                sleep_hours=entry_data.get('sleep_hours'),  # Keep as string
+                sleep_hours=entry_data.get('sleep_hours'),
                 sleep_quality=entry_data.get('sleep_quality'),
-                medications=entry_data.get('medications'),  # Keep as dict
-                symptoms=entry_data.get('symptoms'),        # Keep as dict
+                medications=entry_data.get('medications'),
+                symptoms=entry_data.get('symptoms'),
                 notes=entry_data.get('notes'),
-                
-                # Kidney-specific fields
                 weight=entry_data.get('weight'),
                 swelling_level=entry_data.get('swelling_level'),
                 urine_output=entry_data.get('urine_output'),
@@ -124,24 +156,25 @@ class KidneyProgressService:
                 fatigue_level=entry_data.get('fatigue_level'),
                 nausea_level=entry_data.get('nausea_level'),
                 itching_level=entry_data.get('itching_level'),
-                
-                # Condition type and timestamps
                 condition_type=entry_data.get('condition_type', 'kidney'),
                 submitted_at=datetime.utcnow(),
-                urgency_status=urgency_status  # ✅ Use calculated urgency
+                urgency_status=urgency_status
             )
             
             self.db.add(db_entry)
             self.db.commit()
             self.db.refresh(db_entry)
             
-            print(f"✅ KIDNEY SERVICES: Entry created successfully with ID: {db_entry.id}, Urgency: {db_entry.urgency_status}")
+            print(f"✅ KIDNEY SERVICES: Entry created successfully with ID: {db_entry.id}")
             return db_entry
             
         except Exception as e:
             self.db.rollback()
             print(f"❌ KIDNEY SERVICES: Error: {str(e)}")
-            raise Exception(f"Error creating kidney entry: {str(e)}")
+            raise Exception(f"Error creating/updating kidney entry: {str(e)}")    
+
+
+
 
     def get_all_entries(self) -> List[KidneyEntry]:
         """

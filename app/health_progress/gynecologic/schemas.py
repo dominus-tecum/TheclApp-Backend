@@ -11,6 +11,7 @@ class GynecologicEntryCreate(BaseModel):
     submittedAt: str
     dayPostOp: int
     status: Literal['urgent', 'monitor', 'good']
+    photo_urls: Optional[List[str]] = []
     
     # Vital Signs and Pain Level
     temperature: Optional[str] = ""
@@ -84,6 +85,7 @@ class GynecologicEntryResponse(BaseModel):
     submittedAt: str
     dayPostOp: int
     status: Literal['urgent', 'monitor', 'good']
+    photo_urls: Optional[List[str]] = []
     
     # All the same fields as create
     temperature: Optional[str] = ""

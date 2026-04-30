@@ -28,16 +28,19 @@ class CardiacProgressService:
             print(f"🔍 CARDIAC SERVICES: submission_date: {submission_date}")
             
             # ✅ SIMPLE INTEGER patient_id like cesarean (no foreign key)
+
+
             db_entry = CardiacSurgeryEntry(
-                patient_id=entry_data.get('patient_id'),
-                patient_name=entry_data.get('patient_name', ''),
-                surgery_type=entry_data.get('surgery_type', 'cardiac'),
-                submission_date=submission_date,
-                
-                # ✅ DIRECT JSON STORAGE like cesarean
-                common_data=entry_data.get('common_data', {}),
-                condition_data=entry_data.get('condition_data', {})
-            )
+    patient_id=entry_data.get('patient_id'),
+    patient_name=entry_data.get('patient_name', ''),
+    surgery_type=entry_data.get('surgery_type', 'cardiac'),
+    submission_date=submission_date,
+    
+    # ✅ DIRECT JSON STORAGE like cesarean
+    common_data=entry_data.get('common_data', {}),
+    condition_data=entry_data.get('condition_data', {}),
+    photo_urls=entry_data.get('photo_urls', [])  # ✅ ADD THIS LINE
+)
             
             print("🔍 CARDIAC SERVICES: Database entry created, about to add to session...")
             

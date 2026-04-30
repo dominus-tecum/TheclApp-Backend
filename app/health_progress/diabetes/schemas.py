@@ -44,8 +44,9 @@ class DiabetesEntryResponse(BaseModel):
     created_at: Optional[str] = None
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
-    # ✅ ADD THIS LINE
+    medications: Optional[Dict[str, Any]] = {}  # ← ADD THIS
+    symptoms: Optional[Dict[str, Any]] = {}     # ← ADD THIS
+    notes: Optional[str] = ""                   # ← ADD THIS
     condition_type: Optional[str] = "diabetes"
-
     class Config:
         allow_population_by_field_name = True

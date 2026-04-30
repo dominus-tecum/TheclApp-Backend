@@ -13,3 +13,4 @@ class UrologicalSurgeryEntry(Base):
     common_data = Column(JSON)        # Store nested common_data as JSON
     condition_data = Column(JSON)     # Store nested condition_data as JSON
     created_at = Column(DateTime, default=datetime.utcnow)
+    photo_urls = Column(JSON, default=list)

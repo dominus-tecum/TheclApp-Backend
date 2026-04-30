@@ -148,7 +148,7 @@ class MedicationsSchema(BaseModel):
 
 class FertilityEntryCreate(BaseSchema):
     # Core Tracking Data
-    bbt_temperature: Optional[float] = Field(None, ge=35.0, le=40.0)
+    bbt_temperature: Optional[float] = Field(None, ge=35.0, le=45.0)
     bbt_time: Optional[str] = None
     bbt_notes: Optional[str] = None
     
@@ -213,7 +213,7 @@ class FertilityEntryCreate(BaseSchema):
 
 class FertilityEntryUpdate(BaseSchema):
     # All fields from create but optional
-    bbt_temperature: Optional[float] = Field(None, ge=35.0, le=40.0)
+    bbt_temperature: Optional[float] = Field(None, ge=35.0, le=45.0)
     bbt_time: Optional[str] = None
     bbt_notes: Optional[str] = None
     cervical_fluid_type: Optional[CervicalFluidType] = None

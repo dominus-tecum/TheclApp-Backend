@@ -1,9 +1,12 @@
 # app/health_progress/kidney/routers.py
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from .models import KidneyEntry
 from . import services, schemas
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
 
 router = APIRouter()
 
@@ -15,26 +18,43 @@ def get_kidney_service(db: Session = Depends(get_db)):
 
 @router.post("/entries", response_model=schemas.KidneyEntryResponse)
 async def create_kidney_entry(
-    data: dict,  # ✅ Change from schemas.KidneyEntryCreate to dict
+    data: dict,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     service: services.KidneyProgressService = Depends(get_kidney_service)
 ):
-    """Create a new kidney disease entry with flattened structure"""
     try:
+        patient_id = data.get('patient_id') or data.get('patientId')
+        if patient_id and str(patient_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
         print("🎯 KIDNEY ROUTER: Creating entry with flattened data structure")
         print("🔍 RECEIVED RAW DATA:", data)
         
-        # ✅ Use service to handle the data mapping and creation
         db_entry = service.create_entry(data)
         
-        # ✅ Return the response with proper FLATTENED structure
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='CREATE',
+            resource_type='KIDNEY_ENTRY',
+            patient_id=int(patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            new_value=data
+        )
+        
         return schemas.KidneyEntryResponse(
             id=db_entry.id,
             patient_id=db_entry.patient_id,
             patient_name=db_entry.patient_name,
             submission_date=db_entry.submission_date,
             status=db_entry.status,
-            
-            # Common data (flattened)
             blood_pressure_systolic=db_entry.blood_pressure_systolic,
             blood_pressure_diastolic=db_entry.blood_pressure_diastolic,
             energy_level=db_entry.energy_level,
@@ -43,8 +63,6 @@ async def create_kidney_entry(
             medications=db_entry.medications,
             symptoms=db_entry.symptoms,
             notes=db_entry.notes,
-            
-            # Kidney-specific fields (flattened)
             weight=db_entry.weight,
             swelling_level=db_entry.swelling_level,
             urine_output=db_entry.urine_output,
@@ -53,22 +71,41 @@ async def create_kidney_entry(
             fatigue_level=db_entry.fatigue_level,
             nausea_level=db_entry.nausea_level,
             itching_level=db_entry.itching_level,
-            
             condition_type=db_entry.condition_type,
             submitted_at=db_entry.submitted_at.isoformat() if db_entry.submitted_at else None,
             urgency_status=db_entry.urgency_status
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ KIDNEY ROUTER: Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create entry: {str(e)}")
 
-
 @router.get("/entries")
-async def get_all_kidney_entries(db: Session = Depends(get_db_session)):
-    """Get all kidney disease entries"""
+async def get_all_kidney_entries(
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     try:
         entries = db.query(KidneyEntry).all()
+        entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='KIDNEY_ENTRIES',
+            patient_id=int(current_user.id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return {
             "entries": [
@@ -78,8 +115,6 @@ async def get_all_kidney_entries(db: Session = Depends(get_db_session)):
                     "patient_name": entry.patient_name,
                     "submission_date": entry.submission_date,
                     "status": entry.status,
-                    
-                    # Common data (flattened)
                     "blood_pressure_systolic": entry.blood_pressure_systolic,
                     "blood_pressure_diastolic": entry.blood_pressure_diastolic,
                     "energy_level": entry.energy_level,
@@ -88,8 +123,6 @@ async def get_all_kidney_entries(db: Session = Depends(get_db_session)):
                     "medications": entry.medications,
                     "symptoms": entry.symptoms,
                     "notes": entry.notes,
-                    
-                    # Kidney-specific fields (flattened)
                     "weight": entry.weight,
                     "swelling_level": entry.swelling_level,
                     "urine_output": entry.urine_output,
@@ -98,7 +131,6 @@ async def get_all_kidney_entries(db: Session = Depends(get_db_session)):
                     "fatigue_level": entry.fatigue_level,
                     "nausea_level": entry.nausea_level,
                     "itching_level": entry.itching_level,
-                    
                     "condition_type": entry.condition_type,
                     "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,
                     "urgency_status": entry.urgency_status
@@ -111,14 +143,38 @@ async def get_all_kidney_entries(db: Session = Depends(get_db_session)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get entries: {str(e)}")
 
+
 @router.get("/entries/{patient_id}/{date}")
-async def get_kidney_entry(patient_id: int, date: str, db: Session = Depends(get_db_session)):
-    """Get specific kidney disease entry for patient and date"""
+async def get_kidney_entry(
+    patient_id: int,
+    date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         entry = db.query(KidneyEntry).filter(
             KidneyEntry.patient_id == patient_id,
             KidneyEntry.submission_date == date
         ).first()
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='KIDNEY_ENTRY',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         if not entry:
             return {
@@ -136,8 +192,6 @@ async def get_kidney_entry(patient_id: int, date: str, db: Session = Depends(get
                 "patient_name": entry.patient_name,
                 "submission_date": entry.submission_date,
                 "status": entry.status,
-                
-                # Common data (flattened)
                 "blood_pressure_systolic": entry.blood_pressure_systolic,
                 "blood_pressure_diastolic": entry.blood_pressure_diastolic,
                 "energy_level": entry.energy_level,
@@ -146,8 +200,6 @@ async def get_kidney_entry(patient_id: int, date: str, db: Session = Depends(get
                 "medications": entry.medications,
                 "symptoms": entry.symptoms,
                 "notes": entry.notes,
-                
-                # Kidney-specific fields (flattened)
                 "weight": entry.weight,
                 "swelling_level": entry.swelling_level,
                 "urine_output": entry.urine_output,
@@ -156,7 +208,6 @@ async def get_kidney_entry(patient_id: int, date: str, db: Session = Depends(get
                 "fatigue_level": entry.fatigue_level,
                 "nausea_level": entry.nausea_level,
                 "itching_level": entry.itching_level,
-                
                 "condition_type": entry.condition_type,
                 "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,
                 "urgency_status": entry.urgency_status
@@ -166,27 +217,74 @@ async def get_kidney_entry(patient_id: int, date: str, db: Session = Depends(get
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get entry: {str(e)}")
 
+
 @router.get("/check/{patient_id}/{date}")
-async def check_kidney_entry(patient_id: int, date: str, db: Session = Depends(get_db_session)):
-    """Check if kidney disease entry exists"""
+async def check_kidney_entry(
+    patient_id: int,
+    date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         exists = db.query(KidneyEntry).filter(
             KidneyEntry.patient_id == patient_id,
             KidneyEntry.submission_date == date
         ).first() is not None
         
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='KIDNEY_ENTRY_CHECK',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        
         return {"exists": exists, "patient_id": patient_id, "date": date}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to check entry: {str(e)}")
 
+
 @router.get("/patient/{patient_id}")
-async def get_patient_kidney_entries(patient_id: int, db: Session = Depends(get_db_session)):
-    """Get all kidney disease entries for a patient"""
+async def get_patient_kidney_entries(
+    patient_id: int,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         entries = db.query(KidneyEntry).filter(
             KidneyEntry.patient_id == patient_id
         ).all()
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='KIDNEY_ENTRIES',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return {
             "entries": [
@@ -196,8 +294,6 @@ async def get_patient_kidney_entries(patient_id: int, db: Session = Depends(get_
                     "patient_name": entry.patient_name,
                     "submission_date": entry.submission_date,
                     "status": entry.status,
-                    
-                    # Common data (flattened)
                     "blood_pressure_systolic": entry.blood_pressure_systolic,
                     "blood_pressure_diastolic": entry.blood_pressure_diastolic,
                     "energy_level": entry.energy_level,
@@ -206,8 +302,6 @@ async def get_patient_kidney_entries(patient_id: int, db: Session = Depends(get_
                     "medications": entry.medications,
                     "symptoms": entry.symptoms,
                     "notes": entry.notes,
-                    
-                    # Kidney-specific fields (flattened)
                     "weight": entry.weight,
                     "swelling_level": entry.swelling_level,
                     "urine_output": entry.urine_output,
@@ -216,7 +310,6 @@ async def get_patient_kidney_entries(patient_id: int, db: Session = Depends(get_
                     "fatigue_level": entry.fatigue_level,
                     "nausea_level": entry.nausea_level,
                     "itching_level": entry.itching_level,
-                    
                     "condition_type": entry.condition_type,
                     "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,
                     "urgency_status": entry.urgency_status
@@ -229,4 +322,3 @@ async def get_patient_kidney_entries(patient_id: int, db: Session = Depends(get_
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get patient entries: {str(e)}")
-

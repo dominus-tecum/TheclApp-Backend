@@ -33,10 +33,9 @@ class OrthopedicProgressService:
                 patient_name=entry_data.get('patient_name', ''),
                 surgery_type=entry_data.get('surgery_type', 'orthopedic'),
                 submission_date=submission_date,
-                
-                # ✅ DIRECT JSON STORAGE like cesarean
                 common_data=entry_data.get('common_data', {}),
-                condition_data=entry_data.get('condition_data', {})
+                condition_data=entry_data.get('condition_data', {}),
+                photo_urls=entry_data.get('photo_urls', [])
             )
             
             print("🔍 ORTHOPEDIC SERVICES: Database entry created, about to add to session...")
@@ -136,3 +135,55 @@ class OrthopedicProgressService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Error deleting orthopedic entry: {str(e)}")
+
+    def get_entry_by_date(self, patient_id: int, date_str: str):
+        """
+        Get orthopedic entry for a specific patient and date
+        """
+        try:
+            if isinstance(date_str, str):
+                submission_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            else:
+                submission_date = date_str
+            
+            entry = self.db.query(OrthopedicSurgeryEntry).filter(
+                OrthopedicSurgeryEntry.patient_id == patient_id,
+                OrthopedicSurgeryEntry.submission_date == submission_date
+            ).first()
+            
+            return entry
+            
+        except Exception as e:
+            print(f"Error getting orthopedic entry by date: {e}")
+    
+            return None
+
+
+    def get_entry_by_patient_and_date(self, patient_id: int, submission_date: str):
+        """Get entry by patient ID and submission date"""
+        return self.db.query(OrthopedicSurgeryEntry).filter(
+            OrthopedicSurgeryEntry.patient_id == patient_id,
+            OrthopedicSurgeryEntry.submission_date == submission_date
+        ).first()
+
+
+
+    def update_entry(self, entry_id: int, entry_data: dict):
+        """Update existing entry"""
+        from datetime import datetime
+        
+        entry = self.db.query(OrthopedicSurgeryEntry).filter(OrthopedicSurgeryEntry.id == entry_id).first()
+        if entry:
+            # Convert submission_date string to date object
+            submission_date_str = entry_data.get('submission_date')
+            if submission_date_str:
+                entry.submission_date = datetime.strptime(submission_date_str, '%Y-%m-%d').date()
+            
+            entry.patient_name = entry_data.get('patient_name', entry.patient_name)
+            entry.common_data = entry_data.get('common_data', entry.common_data)
+            entry.condition_data = entry_data.get('condition_data', entry.condition_data)
+            entry.photo_urls = entry_data.get('photo_urls', entry.photo_urls)
+            
+            self.db.commit()
+            self.db.refresh(entry)
+        return entry

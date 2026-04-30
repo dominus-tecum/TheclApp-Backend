@@ -22,7 +22,8 @@ class AbdominalProgressService:
                 patient_name=entry_data.get('patient_name'),
                 submission_date=entry_data.get('submission_date'),
                 common_data=entry_data.get('common_data', {}),  # Direct from JSON
-                condition_data=entry_data.get('condition_data', {})  # Direct from JSON
+                condition_data=entry_data.get('condition_data', {}),  # Direct from JSON
+                photo_urls=entry_data.get('photo_urls', [])
             )
             
             self.db.add(db_entry)
@@ -75,3 +76,33 @@ class AbdominalProgressService:
         return self.db.query(models.AbdominalEntry)\
             .order_by(models.AbdominalEntry.created_at.desc())\
             .all()
+
+    def update_entry(self, entry_id: int, entry_data: dict) -> models.AbdominalEntry:
+        """
+        Update an existing abdominal progress entry
+        """
+        try:
+            entry = self.db.query(models.AbdominalEntry).filter(models.AbdominalEntry.id == entry_id).first()
+            if not entry:
+                raise Exception(f"Entry {entry_id} not found")
+            
+            # Update fields
+            entry.common_data = entry_data.get('common_data', entry.common_data)
+            entry.condition_data = entry_data.get('condition_data', entry.condition_data)
+            entry.photo_urls = entry_data.get('photo_urls', entry.photo_urls)
+            
+            self.db.commit()
+            self.db.refresh(entry)
+            
+            logger.info(f"✅ Abdominal entry {entry_id} updated successfully")
+            return entry
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"❌ Error updating entry: {str(e)}")
+            raise
+
+    def get_entry_by_patient_and_date(self, patient_id: int, date: str):
+        return self.db.query(models.AbdominalEntry).filter(
+            models.AbdominalEntry.patient_id == patient_id,
+            models.AbdominalEntry.submission_date == date
+        ).first()

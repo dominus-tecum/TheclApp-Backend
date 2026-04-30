@@ -1,8 +1,11 @@
 # app/health_progress/diabetes/routers.py
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.health_progress.diabetes.models import DiabetesEntry
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
 
 # Create clean router
 router = APIRouter()
@@ -12,50 +15,139 @@ def get_db_session(db: Session = Depends(get_db)):
     return db
 
 # POST /api/health-progress/diabetes/entries
+
 @router.post("/entries")
-async def create_diabetes_entry(data: dict, db: Session = Depends(get_db_session)):
-    """Create a new diabetes entry"""
+async def create_diabetes_entry(
+    data: dict,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     try:
-        print("📥 Creating diabetes entry:", data)
+        patient_id = data.get('patient_id')
+        if patient_id and str(patient_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
         
-        # Create entry with flat data structure from frontend
-        db_entry = DiabetesEntry(
-            patient_id=data.get('patient_id'),
-            patient_name=data.get('patient_name'),
-            submission_date=data.get('submission_date'),
-            blood_glucose=data.get('blood_glucose'),
-            blood_pressure_systolic=data.get('blood_pressure_systolic'),
-            blood_pressure_diastolic=data.get('blood_pressure_diastolic'),
-            energy_level=data.get('energy_level'),
-            sleep_hours=data.get('sleep_hours'),
-            sleep_quality=data.get('sleep_quality'),
-            medications=data.get('medications'),
-            symptoms=data.get('symptoms'),
-            notes=data.get('notes'),
-            status=data.get('status'),
-            condition_type=data.get('condition_type')
-        )
+        print("📥 Creating/updating diabetes entry:", data)
         
-        db.add(db_entry)
-        db.commit()
-        db.refresh(db_entry)
+        existing_entry = db.query(DiabetesEntry).filter(
+            DiabetesEntry.patient_id == data.get('patient_id'),
+            DiabetesEntry.submission_date == data.get('submission_date')
+        ).first()
         
-        return {
-            "message": "Diabetes entry created successfully",
-            "id": db_entry.id,
-            "patient_id": db_entry.patient_id
-        }
+        if existing_entry:
+            print(f"🔄 Updating existing entry ID: {existing_entry.id}")
+            existing_entry.blood_glucose = data.get('blood_glucose')
+            existing_entry.blood_pressure_systolic = data.get('blood_pressure_systolic')
+            existing_entry.blood_pressure_diastolic = data.get('blood_pressure_diastolic')
+            existing_entry.energy_level = data.get('energy_level')
+            existing_entry.sleep_hours = data.get('sleep_hours')
+            existing_entry.sleep_quality = data.get('sleep_quality')
+            existing_entry.medications = data.get('medications')
+            existing_entry.symptoms = data.get('symptoms')
+            existing_entry.notes = data.get('notes')
+            existing_entry.status = data.get('status')
+            existing_entry.condition_type = data.get('condition_type', 'diabetes')
+            
+            db.commit()
+            db.refresh(existing_entry)
+            
+            # ✅ ADD AUDIT LOG FOR UPDATE
+            log_audit(
+                db=db,
+                user_id=current_user.id,
+                username=current_user.username,
+                user_role=current_user.role.value,
+                action='UPDATE',
+                resource_type='DIABETES_ENTRY',
+                patient_id=int(patient_id),
+                status='success',
+                purpose='TREATMENT',
+                ip_address=request.client.host,
+                user_agent=request.headers.get('user-agent'),
+                new_value=data
+            )
+            
+            return {
+                "message": "Diabetes entry updated successfully",
+                "id": existing_entry.id,
+                "patient_id": existing_entry.patient_id
+            }
+        else:
+            db_entry = DiabetesEntry(
+                patient_id=data.get('patient_id'),
+                patient_name=data.get('patient_name'),
+                submission_date=data.get('submission_date'),
+                blood_glucose=data.get('blood_glucose'),
+                blood_pressure_systolic=data.get('blood_pressure_systolic'),
+                blood_pressure_diastolic=data.get('blood_pressure_diastolic'),
+                energy_level=data.get('energy_level'),
+                sleep_hours=data.get('sleep_hours'),
+                sleep_quality=data.get('sleep_quality'),
+                medications=data.get('medications'),
+                symptoms=data.get('symptoms'),
+                notes=data.get('notes'),
+                status=data.get('status'),
+                condition_type=data.get('condition_type', 'diabetes')
+            )
+            
+            db.add(db_entry)
+            db.commit()
+            db.refresh(db_entry)
+            
+            # ✅ ADD AUDIT LOG FOR CREATE
+            log_audit(
+                db=db,
+                user_id=current_user.id,
+                username=current_user.username,
+                user_role=current_user.role.value,
+                action='CREATE',
+                resource_type='DIABETES_ENTRY',
+                patient_id=int(patient_id),
+                status='success',
+                purpose='TREATMENT',
+                ip_address=request.client.host,
+                user_agent=request.headers.get('user-agent'),
+                new_value=data
+            )
+            
+            return {
+                "message": "Diabetes entry created successfully",
+                "id": db_entry.id,
+                "patient_id": db_entry.patient_id
+            }
         
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create entry: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create/update entry: {str(e)}")
 
 # GET /api/health-progress/diabetes/entries
 @router.get("/entries")
-async def get_all_diabetes_entries(db: Session = Depends(get_db_session)):
-    """Get all diabetes entries"""
+async def get_all_diabetes_entries(
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     try:
         entries = db.query(DiabetesEntry).all()
+        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='DIABETES_ENTRIES',
+            patient_id=int(current_user.id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return {
             "entries": [
@@ -87,13 +179,36 @@ async def get_all_diabetes_entries(db: Session = Depends(get_db_session)):
 
 # GET /api/health-progress/diabetes/entries/{patient_id}/{date}
 @router.get("/entries/{patient_id}/{date}")
-async def get_diabetes_entry(patient_id: int, date: str, db: Session = Depends(get_db_session)):
-    """Get specific diabetes entry for patient and date"""
+async def get_diabetes_entry(
+    patient_id: int,
+    date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         entry = db.query(DiabetesEntry).filter(
             DiabetesEntry.patient_id == patient_id,
             DiabetesEntry.submission_date == date
         ).first()
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='DIABETES_ENTRY',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         if not entry:
             return {
@@ -130,13 +245,36 @@ async def get_diabetes_entry(patient_id: int, date: str, db: Session = Depends(g
 
 # GET /api/health-progress/diabetes/check/{patient_id}/{date}
 @router.get("/check/{patient_id}/{date}")
-async def check_diabetes_entry(patient_id: int, date: str, db: Session = Depends(get_db_session)):
-    """Check if diabetes entry exists"""
+async def check_diabetes_entry(
+    patient_id: int,
+    date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         exists = db.query(DiabetesEntry).filter(
             DiabetesEntry.patient_id == patient_id,
             DiabetesEntry.submission_date == date
         ).first() is not None
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='DIABETES_ENTRY_CHECK',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return {"exists": exists, "patient_id": patient_id, "date": date}
         
@@ -144,13 +282,36 @@ async def check_diabetes_entry(patient_id: int, date: str, db: Session = Depends
         raise HTTPException(status_code=500, detail=f"Failed to check entry: {str(e)}")
 
 # GET /api/health-progress/diabetes/patient/{patient_id}
+
 @router.get("/patient/{patient_id}")
-async def get_patient_diabetes_entries(patient_id: int, db: Session = Depends(get_db_session)):
-    """Get all diabetes entries for a patient"""
+async def get_patient_diabetes_entries(
+    patient_id: int,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         entries = db.query(DiabetesEntry).filter(
             DiabetesEntry.patient_id == patient_id
         ).all()
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='DIABETES_ENTRIES',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return {
             "entries": [

@@ -2,6 +2,7 @@
 from pydantic import BaseModel, validator
 from typing import Optional, Dict, Any
 from datetime import datetime, date  # ✅ ADD date import
+from typing import Optional, Dict, Any, List 
 
 class CesareanCommonData(BaseModel):
     temperature: Optional[str] = ""
@@ -51,6 +52,7 @@ class CesareanEntryCreate(BaseModel):
     patient_id: int
     patient_name: str
     submission_date: str
+    photo_urls: Optional[List[str]] = []
     common_data: CesareanCommonData
     condition_data: CesareanConditionData
 
@@ -69,6 +71,7 @@ class CesareanEntryResponse(BaseModel):
     submission_date: str
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
+    photo_urls: Optional[List[str]] = []
     created_at: str
 
     # ✅ FIXED: Convert date to string for response

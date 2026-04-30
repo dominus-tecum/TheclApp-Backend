@@ -17,3 +17,4 @@ class BurnCareEntry(Base):
     condition_data = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    photo_urls = Column(JSON, default=list)  # Stores array of photo URLs

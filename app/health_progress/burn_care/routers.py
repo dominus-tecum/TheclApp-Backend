@@ -3,18 +3,24 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime
 import json
 import logging
-
+from app.utils.audit import log_audit
 from app.database import get_db
 from app.health_progress.burn_care.models import BurnCareEntry
 from app.health_progress.burn_care.schemas import BurnCareCreate, BurnCareResponse, BurnCareCheckResponse
 from app.health_progress.burn_care.services import BurnCareService
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Debug endpoint to see raw request data
 @router.post("/burn-care/entries/debug")
-async def debug_burn_care_entry(request: Request, db: Session = Depends(get_db)):
+async def debug_burn_care_entry(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # ← ADD THIS
+    db: Session = Depends(get_db)
+):
     """
     Temporary endpoint to debug raw request data and validation issues
     """
@@ -66,12 +72,18 @@ async def debug_burn_care_entry(request: Request, db: Session = Depends(get_db))
 @router.post("/burn-care/entries", response_model=BurnCareResponse)
 async def create_burn_care_entry(
     entry: BurnCareCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create burn care entry - accept frontend data as-is
     """
     try:
+        # ADD THIS VERIFICATION
+        if entry.patient_id != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
         logger.info("=== BURN CARE POST REQUEST ===")
         logger.info(f"Received burn care entry for patient: {entry.patient_id}")
         
@@ -93,11 +105,31 @@ async def create_burn_care_entry(
                 detail="Submission date is required"
             )
         
-       
-        
-        # Create the entry
+                # Create the entry
         result = BurnCareService.create_burn_care_entry(db=db, entry=entry)
         logger.info(f"Entry saved successfully with ID: {result.id}")
+
+        # Convert ALL date/datetime fields to strings for audit log
+        entry_dict = entry.dict()
+        for key, value in entry_dict.items():
+            if hasattr(value, 'isoformat'):
+                entry_dict[key] = value.isoformat()
+        
+        # ADD AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='CREATE',
+            resource_type='BURN_CARE_ENTRY',
+            patient_id=int(entry.patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            new_value=entry_dict
+        )
         
         # Convert nested database data to flat response
         response_data = BurnCareResponse(
@@ -123,6 +155,7 @@ async def create_burn_care_entry(
             protein_intake=result.condition_data.get("protein_intake", ""),
             fluid_intake=result.condition_data.get("fluid_intake", ""),
             additional_notes=result.condition_data.get("additional_notes", ""),
+            photo_urls=result.photo_urls if hasattr(result, 'photo_urls') else [],
             created_at=result.created_at,
             updated_at=result.updated_at
         )
@@ -131,7 +164,6 @@ async def create_burn_care_entry(
         return response_data
         
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
         logger.error(f"Error in create_burn_care_entry: {str(e)}", exc_info=True)
@@ -144,19 +176,33 @@ async def create_burn_care_entry(
 async def check_existing_entry(
     patient_id: str,
     date: date,
+    request: Request,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Check if burn care entry exists for specific patient and date
-    """
+    if patient_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         if not patient_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient ID is required"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient ID is required")
         
         existing_entry = BurnCareService.check_existing_entry(db, patient_id, date)
+        
+        # ✅ ADD THIS AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='BURN_CARE_ENTRY',
+            patient_id=int(patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         return BurnCareCheckResponse(
             exists=existing_entry is not None,
@@ -169,22 +215,34 @@ async def check_existing_entry(
         raise
     except Exception as e:
         logger.error(f"Error checking existing entry: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error checking for existing entry: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error checking for existing entry: {str(e)}")
 
 @router.get("/burn-care/entries")
 async def get_all_burn_care_entries(
+    request: Request,
+    current_user: User = Depends(get_current_user),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Get ALL burn care entries for dashboard with pagination
-    """
     try:
         entries = BurnCareService.get_all_burn_care_entries(db, skip=skip, limit=limit)
+        #entries = [e for e in entries if e.patient_id == str(current_user.id)]
+        
+        # ✅ ADD THIS AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='BURN_CARE_ENTRIES',
+            patient_id=int(current_user.id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         formatted_entries = []
         for entry in entries:
@@ -197,11 +255,12 @@ async def get_all_burn_care_entries(
                 "condition_type": entry.condition_type,
                 "common_data": entry.common_data,
                 "condition_data": entry.condition_data,
+                "photo_urls": entry.photo_urls if hasattr(entry, 'photo_urls') else [],
                 "created_at": entry.created_at.isoformat() if entry.created_at else None,
                 "updated_at": entry.updated_at.isoformat() if entry.updated_at else None
             })
         
-        total_count = db.query(BurnCareEntry).count()
+        total_count = len(entries)
         
         return {
             "entries": formatted_entries,
@@ -214,35 +273,44 @@ async def get_all_burn_care_entries(
         
     except Exception as e:
         logger.error(f"Error retrieving burn care entries: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving burn care entries: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving burn care entries: {str(e)}")
+
+
 
 @router.get("/burn-care/entries/patient/{patient_id}")
 async def get_patient_burn_care_entries(
     patient_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all burn care entries for a specific patient with pagination
-    """
+    if patient_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         if not patient_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient ID is required"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient ID is required")
         
-        entries = db.query(BurnCareEntry).filter(
-            BurnCareEntry.patient_id == patient_id
-        ).offset(skip).limit(limit).all()
+        entries = db.query(BurnCareEntry).filter(BurnCareEntry.patient_id == patient_id).offset(skip).limit(limit).all()
         
-        total_count = db.query(BurnCareEntry).filter(
-            BurnCareEntry.patient_id == patient_id
-        ).count()
+        total_count = db.query(BurnCareEntry).filter(BurnCareEntry.patient_id == patient_id).count()
+        
+        # ✅ ADD THIS AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='BURN_CARE_ENTRIES',
+            patient_id=int(patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         formatted_entries = []
         for entry in entries:
@@ -272,34 +340,44 @@ async def get_patient_burn_care_entries(
         raise
     except Exception as e:
         logger.error(f"Error retrieving patient entries: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving patient entries: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving patient entries: {str(e)}")
+
+
 
 @router.get("/burn-care/entries/{entry_id}", response_model=BurnCareResponse)
 async def get_burn_care_entry(
     entry_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get specific burn care entry by ID
-    """
     try:
         if not entry_id or entry_id <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Valid entry ID is required"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Valid entry ID is required")
         
         entry = db.query(BurnCareEntry).filter(BurnCareEntry.id == entry_id).first()
         if not entry:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Burn care entry with ID {entry_id} not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Burn care entry with ID {entry_id} not found")
         
-        # Convert nested database data to flat response
+        if entry.patient_id != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # ✅ ADD THIS AUDIT LOG
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='BURN_CARE_ENTRY',
+            resource_id=entry_id,
+            patient_id=int(entry.patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        
         return BurnCareResponse(
             id=entry.id,
             patient_id=entry.patient_id,
@@ -323,6 +401,7 @@ async def get_burn_care_entry(
             protein_intake=entry.condition_data.get("protein_intake", ""),
             fluid_intake=entry.condition_data.get("fluid_intake", ""),
             additional_notes=entry.condition_data.get("additional_notes", ""),
+            photo_urls=entry.photo_urls if hasattr(entry, 'photo_urls') else [],
             created_at=entry.created_at,
             updated_at=entry.updated_at
         )
@@ -330,14 +409,14 @@ async def get_burn_care_entry(
         raise
     except Exception as e:
         logger.error(f"Error retrieving burn care entry {entry_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving burn care entry: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving burn care entry: {str(e)}")
+
 
 # Health check endpoint
 @router.get("/burn-care/health")
-async def health_check():
+async def health_check(
+    current_user: User = Depends(get_current_user)  # ← ADD THIS
+):
     """
     Health check for burn care endpoints
     """

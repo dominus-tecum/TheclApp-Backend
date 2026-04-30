@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 # Common Data Model - snake_case
@@ -53,6 +53,7 @@ class UrologicalEntryCreate(BaseModel):
     patient_name: str
     surgery_type: str
     submission_date: str
+    photo_urls: Optional[List[str]] = []
     common_data: CommonData
     condition_data: ConditionData
 
@@ -68,6 +69,7 @@ class UrologicalEntryResponse(BaseModel):
     submission_date: str
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
+    photo_urls: Optional[List[str]] = []
     created_at: datetime
 
     class Config:

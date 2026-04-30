@@ -10,17 +10,20 @@ class BurnCareService:
         # Check if entry already exists
         existing_entry = BurnCareService.check_existing_entry(db, entry.patient_id, entry.submission_date)
         
+        # Convert date to string for JSON storage
+        submission_date_str = entry.submission_date.isoformat() if hasattr(entry.submission_date, 'isoformat') else str(entry.submission_date)
+        
         if existing_entry:
             # Update existing entry
             existing_entry.common_data = {
                 "temperature": entry.temperature,
                 "pain_level": entry.pain_level,
                 "status": entry.status,
-                "day_post_op": entry.dayPost_op  # ✅ ADD: Store dayPost_op
+                "day_post_op": entry.dayPost_op,
+                "submission_date": submission_date_str
             }
             
             existing_entry.condition_data = {
-                # ❌ REMOVE: "pain_level": entry.pain_level, (duplicate)
                 "itching": entry.itching,
                 "wound_appearance": entry.wound_appearance,
                 "drainage": entry.drainage,
@@ -47,16 +50,15 @@ class BurnCareService:
                 surgery_type=entry.surgery_type,
                 condition_type=entry.condition_type,
                 submission_date=entry.submission_date,
-                # ✅ ADD: Store submitted_at if your model has it
-                # submitted_at=entry.submitted_at,  # Uncomment if field exists
+                photo_urls=entry.photo_urls if hasattr(entry, 'photo_urls') else [],
                 common_data={
                     "temperature": entry.temperature,
                     "pain_level": entry.pain_level,
                     "status": entry.status,
-                    "day_post_op": entry.dayPost_op  # ✅ ADD: Store dayPost_op
+                    "day_post_op": entry.dayPost_op,
+                    "submission_date": submission_date_str
                 },
                 condition_data={
-                    # ❌ REMOVE: "pain_level": entry.pain_level, (duplicate)
                     "itching": entry.itching,
                     "wound_appearance": entry.wound_appearance,
                     "drainage": entry.drainage,
@@ -75,14 +77,14 @@ class BurnCareService:
             db.commit()
             db.refresh(db_entry)
             return db_entry
-    
+
     @staticmethod
-    def check_existing_entry(db: Session, patient_id: str, date: date):
+    def check_existing_entry(db: Session, patient_id: str, dt: date):
         return db.query(BurnCareEntry).filter(
             BurnCareEntry.patient_id == patient_id,
-            BurnCareEntry.submission_date == date
+            BurnCareEntry.submission_date == dt
         ).first()
-    
+
     @staticmethod
-    def get_all_burn_care_entries(db: Session):
-        return db.query(BurnCareEntry).all()
+    def get_all_burn_care_entries(db: Session, skip: int = 0, limit: int = 100):
+        return db.query(BurnCareEntry).offset(skip).limit(limit).all()

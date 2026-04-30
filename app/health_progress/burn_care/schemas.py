@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from datetime import date, datetime
 
 class BurnCareCreate(BaseModel):
@@ -12,6 +12,7 @@ class BurnCareCreate(BaseModel):
     submitted_at: datetime
     dayPost_op: int  # ← Match frontend's camelCase
     status: Literal['urgent', 'monitor', 'good']
+    photo_urls: Optional[List[str]] = []
     
     # ✅ ACCEPT ALL FLAT FIELDS (no nesting):
     pain_level: int
@@ -55,6 +56,7 @@ class BurnCareResponse(BaseModel):
     protein_intake: str
     fluid_intake: str
     additional_notes: str
+    photo_urls: Optional[List[str]] = []
     created_at: datetime
     updated_at: datetime
 

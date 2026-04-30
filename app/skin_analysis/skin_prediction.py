@@ -1,10 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict
-import tensorflow as tf
+#import tensorflow as tf
 import numpy as np
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.efficientnet_v2 import preprocess_input
+#from tensorflow.keras.preprocessing import image
+#from tensorflow.keras.applications.efficientnet_v2 import preprocess_input
 import json
 import os
 from pathlib import Path

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, validator
 from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Optional, List, Dict, Any  # Make sure List is included
 
 class AbdominalCommonData(BaseModel):
     temperature: Optional[str] = ""
@@ -26,6 +27,7 @@ class AbdominalEntryCreate(BaseModel):
     submission_date: str
     common_data: AbdominalCommonData
     condition_data: AbdominalConditionData
+    photo_urls: Optional[List[str]] = []
 
     @validator('submission_date')
     def validate_date(cls, v):
@@ -42,4 +44,5 @@ class AbdominalEntryResponse(BaseModel):
     submission_date: str
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
+    photo_urls: Optional[List[str]] = []
     created_at: str

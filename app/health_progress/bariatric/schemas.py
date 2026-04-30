@@ -1,6 +1,6 @@
 # app/health_progress/bariatric/schemas.py
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 from datetime import datetime
 
 class BariatricEntryCreate(BaseModel):
@@ -8,6 +8,7 @@ class BariatricEntryCreate(BaseModel):
     patientId: Optional[Union[int, str]] = None  # Accept both int and string
     patientName: Optional[str] = None
     submissionDate: Optional[str] = None
+    photo_urls: Optional[List[str]] = []
     
     # Vital signs - all strings from frontend
     temperature: Optional[str] = None
@@ -76,6 +77,7 @@ class BariatricEntryResponse(BaseModel):
     urgency_status: Optional[str] = None
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
+    photo_urls: Optional[List[str]] = []
 
     class Config:
         allow_population_by_field_name = True

@@ -36,7 +36,8 @@ class GynecologicProgressService:
                 
                 # ✅ DIRECT JSON STORAGE like urological
                 common_data=entry_data.get('common_data', {}),
-                condition_data=entry_data.get('condition_data', {})
+                condition_data=entry_data.get('condition_data', {}),
+                photo_urls=entry_data.get('photo_urls', []) 
             )
             
             print("🔍 GYNECOLOGIC SERVICES: Database entry created, about to add to session...")

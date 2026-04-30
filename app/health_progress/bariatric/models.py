@@ -16,6 +16,7 @@ class BariatricEntry(Base):
     urgency_status = Column(String(50))
     common_data = Column(JSON)
     condition_data = Column(JSON)
+    photo_urls = Column(JSON, default=list)
     
     # REMOVE the new columns temporarily until migration is done
     # temperature = Column(String(10))

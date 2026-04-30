@@ -18,35 +18,54 @@ class PostnatalEntry(Base):
     # MATERNAL RECOVERY
     lochia_flow = Column(String)
     lochia_color = Column(String)
+    lochia_odor = Column(String)
     perineal_pain = Column(String)
+    perineal_tear = Column(String)
     uterine_pain = Column(String)
+    healing_progress = Column(String)
     breast_engorgement = Column(String)
     nipple_pain = Column(String)
+    nipple_condition = Column(String)
+    milk_supply = Column(String)
     c_section_pain = Column(String)
     incision_redness = Column(Boolean, default=False)
     incision_discharge = Column(Boolean, default=False)
+    
+    # Pain Assessment
+    pain_level = Column(String)
+    pain_location = Column(Text)
     
     # Vital Signs
     maternal_temperature = Column(String)
     blood_pressure_systolic = Column(String)
     blood_pressure_diastolic = Column(String)
     maternal_heart_rate = Column(String)
+    sleep_hours = Column(Integer, default=0)
     
     # Mental Health (EPDS)
-    mood_laugh = Column(String)
-    mood_anxious = Column(String)
-    mood_blame = Column(String)
-    mood_panic = Column(String)
-    mood_sleep = Column(String)
-    mood_sad = Column(String)
-    mood_crying = Column(String)
-    mood_harm = Column(String)
     
-    # INFANT CARE
+    baby_blues_symptoms = Column(Boolean, default=False)
+    
+    
+    
+    # Gastrointestinal & Urinary
+    appetite = Column(String)
+    bowel_movement = Column(String)
+    urinary_frequency = Column(String)
+    incontinence = Column(Boolean, default=False)
+    
+    # Breastfeeding
+    breastfeeding_status = Column(String)
     feeding_method = Column(String)
     feeding_frequency = Column(Integer, default=0)
     feeding_duration = Column(String)
     latching_quality = Column(String)
+    
+    # Baby Information
+    baby_feeding_frequency = Column(Integer, default=0)
+    baby_urination_frequency = Column(Integer, default=0)
+    baby_bowel_movement_frequency = Column(Integer, default=0)
+    baby_weight_gain = Column(String)
     
     wet_diapers = Column(Integer, default=0)
     soiled_diapers = Column(Integer, default=0)
@@ -63,10 +82,15 @@ class PostnatalEntry(Base):
     sleep_pattern = Column(String)
     crying_level = Column(String)
     
+    # Medications
+    medication_adherence = Column(Boolean, default=True)
+    missed_medications = Column(Text)
+    
     # GENERAL
     maternal_energy = Column(String)
-    support_system = Column(String)
+    
     additional_notes = Column(Text)
+    additional_concerns = Column(Text)
     status = Column(String)
     submitted_at = Column(DateTime)
     urgency_status = Column(String, default='low')

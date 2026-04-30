@@ -16,6 +16,7 @@ class CardiacSurgeryEntry(Base):
     # ✅ FOLLOWING THE SAME PATTERN: JSON columns for all data
     common_data = Column(JSON, nullable=False)     # Store common fields as JSON
     condition_data = Column(JSON, nullable=False)  # Store cardiac-specific fields as JSON
+    photo_urls = Column(JSON, default=list)        # Store photo URLs as JSON array
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

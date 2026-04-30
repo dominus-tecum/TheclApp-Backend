@@ -1,56 +1,89 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from typing import Optional
+from jose import JWTError, jwt
+from datetime import datetime
 
-from app.database import get_db  # <-- Import get_db from database.py
+from app.database import get_db
+from app.models import User
+from app.core.config import settings
 
-# Security scheme for JWT tokens
 security = HTTPBearer()
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)  # <-- Now using the get_db from database.py
-) -> dict:
+    db: Session = Depends(get_db)
+):
     """
-    Dependency to get current user from JWT token
-    This is a simplified version - you'll need to implement your actual auth logic
+    Get current authenticated user from JWT token
     """
+    token = credentials.credentials
+    
     try:
-        # TODO: Replace with your actual JWT verification logic
-        # For now, this returns a mock user
-        token = credentials.credentials
+        # Decode the JWT token using your settings
+        payload = jwt.decode(
+            token, 
+            settings.JWT_SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        username: str = payload.get("sub")
         
-        # Mock user data - replace with actual token decoding
-        # Example: payload = jwt.decode(token, "YOUR_SECRET_KEY", algorithms=["HS256"])
-        user_data = {
-            "id": 1,
-            "email": "user@example.com",
-            "role": "patient"
-        }
-        
-        return user_data
-        
-    except Exception as e:
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            
+    except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail=f"Invalid authentication credentials: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-# Optional: Role-based dependencies
-def get_current_patient(user: dict = Depends(get_current_user)):
-    if user.get("role") != "patient":
+    
+    # Get user from database
+    user = db.query(User).filter(User.username == username).first()
+    
+    if user is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+    
     return user
 
-def get_current_doctor(user: dict = Depends(get_current_user)):
-    if user.get("role") != "doctor":
+# Role-based dependencies
+async def get_current_patient(
+    current_user: User = Depends(get_current_user)
+):
+    """Require patient role"""
+    if not current_user.is_patient():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Patient access required"
         )
-    return user
+    return current_user
+
+async def get_current_doctor(
+    current_user: User = Depends(get_current_user)
+):
+    """Require doctor role"""
+    if not current_user.is_doctor():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Doctor access required"
+        )
+    return current_user
+
+async def get_current_admin(
+    current_user: User = Depends(get_current_user)
+):
+    """Require admin role"""
+    if not current_user.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user

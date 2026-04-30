@@ -1,9 +1,12 @@
 # app/health_progress/cardiac/routers.py
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text 
 from app.database import get_db
 from . import services, schemas
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
 
 # ✅ Define router FIRST
 router = APIRouter(prefix="/cardiac", tags=["Cardiac Progress"])
@@ -14,19 +17,21 @@ def get_cardiac_service(db: Session = Depends(get_db)):
 @router.post("/entries", response_model=schemas.CardiacEntryResponse)
 async def create_cardiac_entry(
     entry_data: schemas.CardiacEntryCreate,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     cardiac_service: services.CardiacProgressService = Depends(get_cardiac_service)
 ):
-    """
-    Create a new cardiac surgery progress entry
-    """
     try:
+        if str(entry_data.patientId) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
         print("📥 CARDIAC: Received POST data:", entry_data.dict())
         
-        # Convert flat structure to nested structure for database
         db_data = {
             "patient_id": entry_data.patientId,
             "patient_name": entry_data.patientName,
             "submission_date": entry_data.submissionDate,
+            "photo_urls": entry_data.photo_urls if hasattr(entry_data, 'photo_urls') else [],
             "common_data": {
                 "temperature": entry_data.temperature,
                 "bloodPressureSystolic": entry_data.bloodPressureSystolic,
@@ -69,29 +74,62 @@ async def create_cardiac_entry(
         
         db_entry = cardiac_service.create_entry(db_data)
         
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=cardiac_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='CREATE',
+            resource_type='CARDIAC_ENTRY',
+            patient_id=int(entry_data.patientId),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            new_value=entry_data.dict()
+        )
+        
         return schemas.CardiacEntryResponse(
             id=db_entry.id,
             patient_id=db_entry.patient_id,
             patient_name=db_entry.patient_name,
-            submission_date=str(db_entry.submission_date),  # ✅ Convert to string
+            submission_date=str(db_entry.submission_date),
             common_data=db_entry.common_data,
             condition_data=db_entry.condition_data,
             created_at=db_entry.created_at.isoformat()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         print("❌ CARDIAC POST Error details:", str(e))
         raise HTTPException(status_code=500, detail=f"Failed to create cardiac progress entry: {str(e)}")
 
 @router.get("/entries")
 async def get_all_cardiac_entries(
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     cardiac_service: services.CardiacProgressService = Depends(get_cardiac_service)
 ):
-    """
-    Get ALL cardiac surgery entries
-    """
     try:
         entries = cardiac_service.get_all_entries()
+        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=cardiac_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='CARDIAC_ENTRIES',
+            patient_id=int(current_user.id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         formatted_entries = []
         for entry in entries:
@@ -103,6 +141,7 @@ async def get_all_cardiac_entries(
                 "conditionType": "cardiac",
                 "common_data": entry.common_data,
                 "condition_data": entry.condition_data,
+                "photo_urls": entry.photo_urls if hasattr(entry, 'photo_urls') else [],
                 "created_at": entry.created_at.isoformat() if entry.created_at else None
             })
         
@@ -119,13 +158,31 @@ async def get_all_cardiac_entries(
 async def check_cardiac_entry(
     patient_id: int,
     date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     cardiac_service: services.CardiacProgressService = Depends(get_cardiac_service)
 ):
-    """
-    Check if cardiac entry exists for specific patient and date
-    """
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         exists = cardiac_service.check_existing_entry(patient_id, date)
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=cardiac_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='CARDIAC_ENTRY',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        
         return {"exists": exists, "patient_id": patient_id, "date": date}
         
     except Exception as e:
@@ -134,13 +191,30 @@ async def check_cardiac_entry(
 @router.get("/entries/patient/{patient_id}")
 async def get_patient_cardiac_entries(
     patient_id: int,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     cardiac_service: services.CardiacProgressService = Depends(get_cardiac_service)
 ):
-    """
-    Get all cardiac entries for a specific patient
-    """
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         entries = cardiac_service.get_patient_entries(patient_id)
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=cardiac_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='CARDIAC_ENTRIES',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         formatted_entries = []
         for entry in entries:
@@ -162,54 +236,3 @@ async def get_patient_cardiac_entries(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving patient cardiac entries: {str(e)}")
-
-
-
-
-
-
-
-
-        
-
-@router.post("/fix-missing-table")
-async def fix_missing_cardiac_table(
-    db: Session = Depends(get_db)
-):
-    """
-    TEMPORARY: Create missing cardiac_surgery_entries table
-    Call once: curl -X POST https://theclapp-backend.onrender.com/api/health-progress/cardiac/fix-missing-table
-    Then delete this endpoint
-    """
-    try:
-        # SQLite CREATE TABLE for cardiac
-        sql = text("""
-            CREATE TABLE IF NOT EXISTS cardiac_surgery_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id INTEGER NOT NULL,
-                patient_name TEXT NOT NULL,
-                surgery_type TEXT DEFAULT 'cardiac',
-                submission_date TEXT NOT NULL,
-                common_data TEXT,
-                condition_data TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(patient_id, submission_date)
-            )
-        """)
-        
-        db.execute(sql)
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "SQLite table 'cardiac_surgery_entries' created",
-            "note": "Delete this endpoint after use"
-        }
-        
-    except Exception as e:
-        db.rollback()
-        error_msg = str(e)
-        if "already exists" in error_msg:
-            return {"success": True, "message": "Table already exists"}
-        return {"success": False, "error": error_msg}

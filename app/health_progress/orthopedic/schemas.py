@@ -1,18 +1,18 @@
 # app/health_progress/orthopedic/schemas.py
 from pydantic import BaseModel, validator
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, List
 from datetime import datetime, date
 
 class OrthopedicCommonData(BaseModel):
     temperature: Optional[str] = ""
-    blood_pressure_systolic: Optional[str] = ""
-    blood_pressure_diastolic: Optional[str] = ""
-    heart_rate: Optional[str] = ""
-    respiratory_rate: Optional[str] = ""
+    blood_pressure_systolic: Optional[str] = ""   # ← change to snake_case
+    blood_pressure_diastolic: Optional[str] = ""  # ← change to snake_case
+    heart_rate: Optional[str] = ""                # ← change to snake_case
+    oxygen_saturation: Optional[str] = ""         # ← change to snake_case
+    respiratory_rate: Optional[str] = ""          # ← change to snake_case
     pain_level: int
 
 class OrthopedicConditionData(BaseModel):
-    # Pain and neurovascular status
     selected_condition: str
     pain_location: str
     limb_color: Literal['normal', 'pale', 'blue', 'red']
@@ -21,30 +21,24 @@ class OrthopedicConditionData(BaseModel):
     limb_movement: Literal['normal', 'reduced', 'absent']
     limb_sensation: Literal['normal', 'reduced', 'numbness', 'tingling']
     distal_pulse: Literal['present', 'reduced', 'absent']
-    
-    # Wound condition
     wound_condition: Literal['clean', 'redness', 'discharge', 'odor']
-    wound_discharge_type: Optional[Literal['serous', 'bloody', 'purulent']] = None
+    wound_discharge_type: Optional[Literal['serous', 'bloody', 'purulent', 'sanguinous', 'serosanguinous']] = None
     wound_swelling: Literal['none', 'mild', 'moderate', 'severe']
-    
-    # Mobility and weight-bearing
     mobility_level: Literal['independent', 'assisted', 'bed_bound']
     weight_bearing_status: Literal['non_weight', 'touch_down', 'partial', 'full']
     assistive_device: Optional[Literal['none', 'crutches', 'walker', 'cane']] = None
-    
-    # Drain management
     has_drain: bool
     drain_output: Optional[str] = None
     drain_color: Optional[Literal['serous', 'sanguinous', 'serosanguinous', 'purulent']] = None
-    
-    # General
     additional_notes: Optional[str] = ""
     status: Literal['urgent', 'monitor', 'good']
 
 class OrthopedicEntryCreate(BaseModel):
     patient_id: int
     patient_name: str
+    surgery_type: str
     submission_date: str
+    photo_urls: Optional[List[str]] = []
     common_data: OrthopedicCommonData
     condition_data: OrthopedicConditionData
 
@@ -64,9 +58,12 @@ class OrthopedicEntryResponse(BaseModel):
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
     created_at: str
+    photo_urls: Optional[List[str]] = []
 
     @validator('submission_date', pre=True)
     def convert_date_to_string(cls, v):
         if isinstance(v, date):
             return v.isoformat()
         return v
+
+OrthopedicEntryResponse.model_rebuild()

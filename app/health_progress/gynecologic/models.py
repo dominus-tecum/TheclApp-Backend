@@ -19,3 +19,4 @@ class GynecologicSurgeryEntry(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    photo_urls = Column(JSON, default=list)

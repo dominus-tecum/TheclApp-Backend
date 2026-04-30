@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from app.utils.audit import log_audit
+
+from app.models import User
+
 
 from app.database import get_db
 from app.fertility.models import (
@@ -45,12 +49,7 @@ def get_current_patient_id(
     print(f"🔍 [GET-PATIENT-ID] Current user ID type: {type(current_user.get('id'))}")
 
 
-    # DEBUG: Show all patients in DB
-    all_patients = db.query(Patient).all()
-    print(f"🔍 [GET-PATIENT-ID] All patients in DB:")
-    for p in all_patients:
-        print(f"  - id={p.id}, user_id={p.user_id} (type: {type(p.user_id)})")
-   
+       
         
     patient_service = PatientService(db)
     patient = patient_service.get_patient_by_user_id(str(current_user.get("id")))
@@ -80,7 +79,9 @@ def get_current_patient_id(
 
 @router.get("/patients/{patient_id}", response_model=PatientResponse)
 def get_patient_by_id(
-    patient_id: str,  # CHANGED FROM int TO str
+    patient_id: str,
+    request: Request,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get patient by ID or user_id (handles both string '3' and integer 1)"""
@@ -113,13 +114,27 @@ def get_patient_by_id(
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient.id)
     
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_PATIENT',
+        patient_id=patient.id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     # Map to EXACT PatientResponse field names
     return {
-        "id": patient.id,  # Must be int (not string)
-        "user_id": patient.user_id,  # Must be string
-        "name": patient.name,  # Not "patient_name"
+        "id": patient.id,
+        "user_id": patient.user_id,
+        "name": patient.name,
         "email": patient.email,
-        "birth_date": str(patient.birth_date) if patient.birth_date else None,  # Convert to string
+        "birth_date": str(patient.birth_date) if patient.birth_date else None,
         "phone_number": getattr(patient, 'phone_number', None),
         "created_at": patient.created_at,
         "updated_at": getattr(patient, 'updated_at', None),
@@ -138,18 +153,12 @@ def get_patient_by_id(
     }
 
 
-
-
-
-
-
-
-
-
 @router.get("/entries/{patient_id}/{date}")
 def get_entry_by_patient_and_date(
     patient_id: str,
     date: str,
+    request: Request,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Check if entry exists for patient on specific date"""
@@ -157,6 +166,20 @@ def get_entry_by_patient_and_date(
     
     entry_service = FertilityEntryService(db)
     entry = entry_service.get_entry_by_date(patient_id, date)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_ENTRY',
+        patient_id=int(patient_id) if patient_id.isdigit() else None,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     if entry:
         print(f"✅ [CHECK-ENTRY] Entry found: {entry.id}")
@@ -169,24 +192,38 @@ def get_entry_by_patient_and_date(
 
 
 
-
 # In app/fertility/routers.py, update the function:
 @router.get("/entries", response_model=PaginatedResponse)
 def get_fertility_entries(
     patient_id: int = Depends(get_current_patient_id),
     filters: FertilityEntryFilter = Depends(),
     pagination: PaginationParams = Depends(),
+    request: Request = None,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get fertility entries with filtering and pagination"""
     print(f"🔍 [FERTILITY-ENTRIES] ENTRY POINT - Request received")
     print(f"🔍 [FERTILITY-ENTRIES] Patient ID from dependency: {patient_id}")
     
-    # If we get here, auth succeeded!
     print(f"✅ [FERTILITY-ENTRIES] Authentication SUCCESS")
     
     entry_service = FertilityEntryService(db)
     entries, total = entry_service.get_entries(patient_id, filters, pagination)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_ENTRIES',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get('user-agent') if request else None
+    )
     
     print(f"🔍 [FERTILITY-ENTRIES] Found {len(entries)} entries")
     
@@ -194,7 +231,6 @@ def get_fertility_entries(
     entry_dicts = []
     for entry in entries:
         entry_dict = {}
-        # Manually extract all fields
         entry_dict["id"] = entry.id
         entry_dict["patient_id"] = entry.patient_id
         entry_dict["patient_name"] = entry.patient_name
@@ -237,15 +273,174 @@ def get_fertility_entries(
     )
 
 
+
+@router.get("/all-entries")
+async def get_all_fertility_entries(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        entries = db.query(FertilityEntry).all()
+        
+        formatted_entries = []
+        for entry in entries:
+            # Calculate fertility probability based on cycle position
+            probability = 0
+            cycle_day = entry.cycle_day or 0
+            window_start = entry.fertility_window_start or 0
+            window_end = entry.fertility_window_end or 0
+            
+            if window_start > 0 and window_end > 0:
+                if window_start <= cycle_day <= window_end:
+                    distance_from_ovulation = abs(cycle_day - entry.predicted_ovulation_day) if entry.predicted_ovulation_day else 99
+                    if distance_from_ovulation <= 1:
+                        probability = 85
+                    elif distance_from_ovulation <= 2:
+                        probability = 70
+                    elif distance_from_ovulation <= 3:
+                        probability = 50
+                    else:
+                        probability = 35
+                elif cycle_day < window_start:
+                    days_until = window_start - cycle_day
+                    if days_until <= 2:
+                        probability = 25
+                    else:
+                        probability = 10
+                else:
+                    probability = 5
+            else:
+                if 8 <= cycle_day <= 18:
+                    probability = 40
+                else:
+                    probability = 15
+            
+            if entry.fertility_status == FertilityStatus.FERTILE:
+                probability = min(95, probability + 30)
+            elif entry.fertility_status == FertilityStatus.POSSIBLY_FERTILE:
+                probability = min(85, probability + 15)
+            
+            formatted_entries.append({
+                "id": entry.id,
+                "patient_id": entry.patient_id,
+                "patient_name": entry.patient_name,
+                "submission_date": entry.submission_date,
+                "condition_type": "fertility",
+                "status": "good",
+                "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,
+                
+                # Cycle Information
+                "cycle_day": cycle_day,
+                "fertility_status": entry.fertility_status.value if entry.fertility_status else None,
+                "fertility_probability": probability,
+                "fertility_window_start": entry.fertility_window_start,
+                "fertility_window_end": entry.fertility_window_end,
+                "predicted_ovulation_day": entry.predicted_ovulation_day,
+                "cycle_phase": entry.cycle_phase.value if entry.cycle_phase else None,
+                
+                # Basal Body Temperature (BBT)
+                "bbt_temperature": entry.bbt_temperature,
+                "bbt_time": entry.bbt_time,
+                "bbt_notes": entry.bbt_notes,
+                
+                # Cervical Fluid
+                "cervical_fluid_type": entry.cervical_fluid_type.value if entry.cervical_fluid_type else None,
+                "cervical_fluid_amount": entry.cervical_fluid_amount.value if entry.cervical_fluid_amount else None,
+                "cervical_fluid_color": entry.cervical_fluid_color,
+                
+                # Cervical Position
+                "cervical_position": entry.cervical_position.value if entry.cervical_position else None,
+                "cervical_firmness": entry.cervical_firmness.value if entry.cervical_firmness else None,
+                "cervical_opening": entry.cervical_opening.value if entry.cervical_opening else None,
+                
+                # LH Testing
+                "lh_test_result": entry.lh_test_result.value if entry.lh_test_result else None,
+                "lh_test_time": entry.lh_test_time,
+                "lh_test_brand": entry.lh_test_brand,
+                
+                # Menstrual Tracking
+                "menstrual_flow": entry.menstrual_flow.value if entry.menstrual_flow else None,
+                "menstrual_color": entry.menstrual_color,
+                "menstrual_cramps": entry.menstrual_cramps.value if entry.menstrual_cramps else None,
+                
+                # Symptoms
+                "libido_level": entry.libido_level.value if entry.libido_level else None,
+                "breast_tenderness": entry.breast_tenderness.value if entry.breast_tenderness else None,
+                "ovulation_pain": entry.ovulation_pain,
+                "ovulation_pain_side": entry.ovulation_pain_side,
+                "bloating": entry.bloating.value if entry.bloating else None,
+                "mood": entry.mood.value if entry.mood else None,
+                "energy_level": entry.energy_level.value if entry.energy_level else None,
+                
+                # Intercourse
+                "intercourse_today": entry.intercourse_today,
+                "intercourse_time": entry.intercourse_time,
+                "intercourse_position": entry.intercourse_position.value if entry.intercourse_position else None,
+                "contraception_used": entry.contraception_used.value if entry.contraception_used else None,
+                
+                # Health Metrics
+                "weight": entry.weight,
+                "resting_heart_rate": entry.resting_heart_rate,
+                "sleep_hours": entry.sleep_hours,
+                "stress_level": entry.stress_level.value if entry.stress_level else None,
+                
+                # Medications & Notes
+                "medications": entry.medications,
+                "additional_notes": entry.additional_notes,
+            })
+        
+        log_audit(
+            db=db,
+            user_id=current_user.get('id'),
+            username=current_user.get('username'),
+            user_role=current_user.get('role'),
+            action='READ',
+            resource_type='FERTILITY_ENTRIES',
+            patient_id=None,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        
+        return {
+            "items": formatted_entries,
+            "total": len(entries),
+            "condition_type": "fertility"
+        }
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 @router.get("/entries/{entry_id}", response_model=FertilityEntryResponse)
 def get_fertility_entry(
     entry_id: int,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get a specific fertility entry"""
     entry_service = FertilityEntryService(db)
     entry = entry_service.get_entry(entry_id, patient_id)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_ENTRY',
+        resource_id=entry_id,
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return entry
 
 
@@ -253,48 +448,119 @@ def get_fertility_entry(
 def update_fertility_entry(
     entry_id: int,
     update_data: FertilityEntryUpdate,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Update a fertility entry"""
     entry_service = FertilityEntryService(db)
     entry = entry_service.update_entry(entry_id, patient_id, update_data)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='UPDATE',
+        resource_type='FERTILITY_ENTRY',
+        resource_id=entry_id,
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value=update_data.dict()
+    )
+    
     return entry
 
 
 @router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fertility_entry(
     entry_id: int,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Delete a fertility entry"""
     entry_service = FertilityEntryService(db)
     entry_service.delete_entry(entry_id, patient_id)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='DELETE',
+        resource_type='FERTILITY_ENTRY',
+        resource_id=entry_id,
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return
 
 
 @router.get("/entries/date/{date_str}", response_model=Optional[FertilityEntryResponse])
 def get_entry_by_date(
     date_str: str,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get fertility entry by date"""
     entry_service = FertilityEntryService(db)
     entry = entry_service.get_entry_by_date(patient_id, date_str)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_ENTRY',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return entry
 
 
 @router.get("/entries/cycle/{cycle_number}", response_model=List[FertilityEntryResponse])
 def get_cycle_entries(
     cycle_number: int,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get all entries for a specific cycle"""
     entry_service = FertilityEntryService(db)
     entries = entry_service.get_cycle_entries(patient_id, cycle_number)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_CYCLE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return entries
 
 
@@ -302,46 +568,116 @@ def get_cycle_entries(
 @router.post("/profile", response_model=FertilityProfileResponse, status_code=status.HTTP_201_CREATED)
 def create_fertility_profile(
     profile_data: FertilityProfileCreate,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Create a fertility profile"""
     profile_service = FertilityProfileService(db)
     profile = profile_service.create_profile(patient_id, profile_data)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='CREATE',
+        resource_type='FERTILITY_PROFILE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value=profile_data.dict()
+    )
+    
     return profile
 
 
 @router.get("/profile", response_model=Optional[FertilityProfileResponse])
 def get_fertility_profile(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get fertility profile"""
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='FERTILITY_PROFILE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return profile
 
 
 @router.put("/profile", response_model=FertilityProfileResponse)
 def update_fertility_profile(
     update_data: FertilityProfileUpdate,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Update fertility profile"""
     profile_service = FertilityProfileService(db)
     profile = profile_service.update_profile(patient_id, update_data)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='UPDATE',
+        resource_type='FERTILITY_PROFILE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value=update_data.dict()
+    )
+    
     return profile
 
 
 @router.delete("/profile", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fertility_profile(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Delete fertility profile"""
     profile_service = FertilityProfileService(db)
     profile_service.delete_profile(patient_id)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='DELETE',
+        resource_type='FERTILITY_PROFILE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return
 
 
@@ -349,22 +685,36 @@ def delete_fertility_profile(
 @router.post("/analyze/cycle", response_model=CycleSummaryResponse)
 def analyze_cycle(
     analysis_request: CycleSummaryRequest,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Analyze fertility cycle and generate summary"""
     analysis_service = CycleAnalysisService(db)
     
-    # Get patient info
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Generate summary
     summary = analysis_service.generate_cycle_summary(
         patient_id=patient_id,
         cycle_id=analysis_request.cycle_id,
         start_date=analysis_request.start_date,
         end_date=analysis_request.end_date
+    )
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='ANALYZE',
+        resource_type='FERTILITY_ANALYSIS',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
     )
     
     return CycleSummaryResponse(
@@ -377,20 +727,34 @@ def analyze_cycle(
 @router.post("/analyze/doctor-summary", response_model=DoctorVisitSummaryResponse)
 def generate_doctor_summary(
     summary_request: DoctorVisitSummaryRequest,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Generate doctor visit summary"""
     analysis_service = CycleAnalysisService(db)
     
-    # Get patient info
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Generate summary
     summary = analysis_service.generate_doctor_summary(
         patient_id=patient_id,
         timeframe=summary_request.timeframe
+    )
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='ANALYZE',
+        resource_type='DOCTOR_SUMMARY',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
     )
     
     return DoctorVisitSummaryResponse(**summary)
@@ -399,15 +763,15 @@ def generate_doctor_summary(
 @router.post("/analyze/partner-update", response_model=PartnerUpdateResponse)
 def generate_partner_update(
     update_request: PartnerUpdateRequest,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Generate partner update"""
-    # Get patient info
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Get latest entry
     entry_service = FertilityEntryService(db)
     entries, _ = entry_service.get_entries(patient_id)
     
@@ -419,11 +783,9 @@ def generate_partner_update(
     
     latest_entry = entries[0]
     
-    # Get fertility profile
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     
-    # Calculate fertility probability
     from services import FertilityCycleCalculator
     calculator = FertilityCycleCalculator()
     
@@ -431,7 +793,6 @@ def generate_partner_update(
     if profile and profile.last_period_date and profile.cycle_length:
         fertility_window = calculator.calculate_fertility_window(profile.cycle_length)
     
-    # Count fertile signs
     fertile_signs = 0
     if latest_entry.cervical_fluid_type == "egg_white":
         fertile_signs += 2
@@ -446,7 +807,6 @@ def generate_partner_update(
         fertile_signs
     )
     
-    # Prepare observations
     observations = {}
     if update_request.include_details:
         observations = {
@@ -457,7 +817,6 @@ def generate_partner_update(
             "cycle_day": latest_entry.cycle_day
         }
     
-    # Generate recommendations
     recommendations = None
     if update_request.include_recommendations:
         recommendations = []
@@ -467,6 +826,20 @@ def generate_partner_update(
             recommendations.append("Good time for intercourse - consider every other day")
         elif latest_entry.lh_test_result == "peak":
             recommendations.append("Peak LH detected - ovulation likely in 24-48 hours")
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='GENERATE',
+        resource_type='PARTNER_UPDATE',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return PartnerUpdateResponse(
         patient_name=patient.name,
@@ -481,30 +854,40 @@ def generate_partner_update(
 
 @router.get("/analyze/stats")
 def get_cycle_statistics(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get cycle statistics"""
     analysis_service = CycleAnalysisService(db)
     
-    # Get all entries
     entry_service = FertilityEntryService(db)
     entries, _ = entry_service.get_entries(patient_id)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='CYCLE_STATS',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     if not entries:
         return {"message": "No data available for analysis"}
     
-    # Group by cycle
     cycles = analysis_service._group_entries_by_cycle(entries)
-    
-    # Analyze multiple cycles
     stats = analysis_service._analyze_multiple_cycles(cycles)
     
-    # Get fertility profile
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     
-    # Add profile info
     if profile:
         stats["profile"] = {
             "trying_to_conceive": profile.trying_to_conceive,
@@ -517,17 +900,32 @@ def get_cycle_statistics(
 
 @router.get("/analyze/bbt-chart")
 def get_bbt_chart_data(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Get BBT chart data"""
     entry_service = FertilityEntryService(db)
     entries, _ = entry_service.get_entries(patient_id)
     
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='BBT_CHART',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     if not entries:
         return {"message": "No BBT data available"}
     
-    # Filter entries with BBT data
     bbt_entries = [
         {
             "date": entry.submission_date,
@@ -552,15 +950,15 @@ def get_bbt_chart_data(
 # Export Routes
 @router.get("/export/cycle-summary/text")
 def export_cycle_summary_text(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Export cycle summary as text"""
-    # Get patient info
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Get latest entry
     entry_service = FertilityEntryService(db)
     entries, _ = entry_service.get_entries(patient_id)
     
@@ -572,11 +970,9 @@ def export_cycle_summary_text(
     
     latest_entry = entries[0]
     
-    # Get fertility profile
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     
-    # Calculate fertility probability
     from services import FertilityCycleCalculator
     calculator = FertilityCycleCalculator()
     
@@ -586,7 +982,6 @@ def export_cycle_summary_text(
     if profile and profile.last_period_date and profile.cycle_length:
         fertility_window = calculator.calculate_fertility_window(profile.cycle_length)
         
-        # Count fertile signs
         fertile_signs = 0
         if latest_entry.cervical_fluid_type == "egg_white":
             fertile_signs += 2
@@ -601,7 +996,6 @@ def export_cycle_summary_text(
             fertile_signs
         )
     
-    # Prepare observations
     observations = {
         "cervical_fluid": latest_entry.cervical_fluid_type,
         "lh_test": latest_entry.lh_test_result,
@@ -612,7 +1006,6 @@ def export_cycle_summary_text(
         "fertility_window": f"Days {fertility_window.get('start', 0)}-{fertility_window.get('end', 0)}"
     }
     
-    # Generate recommendations
     recommendations = []
     if latest_entry.fertility_status == "fertile":
         recommendations.append("Optimal time for intercourse - consider today or tomorrow")
@@ -621,7 +1014,6 @@ def export_cycle_summary_text(
     elif latest_entry.lh_test_result == "peak":
         recommendations.append("Peak LH detected - ovulation likely in 24-48 hours")
     
-    # Create summary text
     summary_text = ExportService.create_cycle_summary_text(
         patient_name=patient.name,
         cycle_day=latest_entry.cycle_day,
@@ -631,20 +1023,34 @@ def export_cycle_summary_text(
         recommendations=recommendations if recommendations else None
     )
     
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='EXPORT',
+        resource_type='CYCLE_SUMMARY',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return {"summary_text": summary_text}
 
 
 @router.get("/export/emergency-card")
 def export_emergency_card(
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Export emergency card"""
-    # Get patient info
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Calculate age
     age = None
     if patient.birth_date:
         try:
@@ -662,21 +1068,32 @@ def export_emergency_card(
         "email": patient.email
     }
     
-    # Get fertility profile
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     fertility_profile = profile.dict() if profile else {}
     
-    # Get latest entry
     entry_service = FertilityEntryService(db)
     entries, _ = entry_service.get_entries(patient_id)
     latest_entry = entries[0].dict() if entries else {}
     
-    # Create emergency card text
     card_text = ExportService.create_emergency_card_text(
         patient_info=patient_info,
         fertility_profile=fertility_profile,
         latest_entry=latest_entry
+    )
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='EXPORT',
+        resource_type='EMERGENCY_CARD',
+        patient_id=patient_id,
+        status='success',
+        purpose='EMERGENCY',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
     )
     
     return {"emergency_card_text": card_text}
@@ -686,43 +1103,52 @@ def export_emergency_card(
 @router.post("/validate/entry", response_model=ValidationResult)
 def validate_fertility_entry(
     entry_data: FertilityEntryCreate,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Validate fertility entry data"""
     errors = []
     warnings = []
     
-    # Check for required fields (if any)
     if not entry_data.submission_date:
         errors.append({"field": "submission_date", "message": "Submission date is required"})
     
-    # Validate BBT temperature range
     if entry_data.bbt_temperature is not None:
         if entry_data.bbt_temperature < 35.0 or entry_data.bbt_temperature > 40.0:
             warnings.append("BBT temperature seems abnormal (35-40°C normal range)")
     
-    # Check for peak LH without intercourse
     if entry_data.lh_test_result == "peak" and not entry_data.intercourse_today:
         warnings.append("Peak LH detected - consider timing intercourse in next 24-48 hours")
     
-    # Check for egg white cervical fluid
     if entry_data.cervical_fluid_type == "egg_white":
         warnings.append("Egg white cervical fluid detected - highly fertile sign")
     
-    # Check for high stress
     if entry_data.stress_level in ["high", "very_high"]:
         warnings.append("High stress levels may affect cycle regularity and fertility")
     
-    # Check for insufficient sleep
     if entry_data.sleep_hours is not None and entry_data.sleep_hours < 6:
         warnings.append("Insufficient sleep may affect hormone balance and fertility")
     
-    # Check for existing entry on same date
     entry_service = FertilityEntryService(db)
     existing_entry = entry_service.get_entry_by_date(patient_id, entry_data.submission_date)
     if existing_entry:
         warnings.append(f"Entry already exists for date {entry_data.submission_date}")
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='VALIDATE',
+        resource_type='FERTILITY_VALIDATION',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return ValidationResult(
         is_valid=len(errors) == 0,
@@ -736,7 +1162,6 @@ def validate_fertility_entry(
 def health_check(db: Session = Depends(get_db)):
     """Health check endpoint"""
     try:
-        # Try to query database
         db.execute("SELECT 1")
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
@@ -753,8 +1178,10 @@ def health_check(db: Session = Depends(get_db)):
 @router.post("/entries", response_model=FertilityEntryResponse)
 def create_or_update_fertility_entry(
     entry_data: FertilityEntryCreate,
+    request: Request,
     patient_id: int = Depends(get_current_patient_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     """Create or update fertility entry with insights"""
     
@@ -763,31 +1190,23 @@ def create_or_update_fertility_entry(
     entry_service = FertilityEntryService(db)
     profile_service = FertilityProfileService(db)
     
-    # Check if entry exists
     existing_entry = entry_service.get_entry_by_date(patient_id, entry_data.submission_date)
-    
     fertility_profile = profile_service.get_profile(patient_id)
     
     if existing_entry:
-        # UPDATE
         print(f"🔄 [FINAL] Updating entry {existing_entry.id}")
-        
-        # Remove patient_id from entry_data if present
         entry_dict = entry_data.dict()
         entry_dict.pop('patient_id', None)
-        
         from app.fertility.schemas import FertilityEntryUpdate
         update_data = FertilityEntryUpdate(**entry_dict)
-        
         entry = entry_service.update_entry(existing_entry.id, patient_id, update_data)
         action = "updated"
     else:
-        # CREATE
         print(f"🆕 [FINAL] Creating new entry")
         entry = entry_service.create_entry(patient_id, entry_data, fertility_profile)
         action = "created"
     
-    # ====== GENERATE INSIGHTS ======
+    # Generate insights
     insights = {
         "cycle_summary": {
             "cycle_day": entry.cycle_day or 0,
@@ -806,7 +1225,6 @@ def create_or_update_fertility_entry(
         "next_steps": ["Check again tomorrow"]
     }
     
-    # Add ovulation alert if LH test is PEAK
     if entry.lh_test_result == LHTestResult.PEAK:
         insights["ovulation_alert"] = {
             "message": "🚨 PEAK LH DETECTED!",
@@ -822,11 +1240,24 @@ def create_or_update_fertility_entry(
             "urgency": "medium"
         }
     
-    # Get patient name
     patient_service = PatientService(db)
     patient = patient_service.get_patient(patient_id)
     
-    # Create response - CONVERT ALL DATETIME TO STRING
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='CREATE' if action == 'created' else 'UPDATE',
+        resource_type='FERTILITY_ENTRY',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value=entry_data.dict()
+    )
+    
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={
@@ -843,9 +1274,8 @@ def create_or_update_fertility_entry(
                 "bbt_temperature": entry.bbt_temperature,
                 "lh_test_result": entry.lh_test_result.value if entry.lh_test_result else None,
                 "submission_date": entry.submission_date,
-                "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,  # FIXED
-                "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,  # FIXED
-                # Add other required fields with proper defaults
+                "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else None,
+                "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
                 "bbt_time": entry.bbt_time,
                 "bbt_notes": entry.bbt_notes,
                 "cervical_fluid_type": entry.cervical_fluid_type.value if entry.cervical_fluid_type else None,
@@ -884,54 +1314,6 @@ def create_or_update_fertility_entry(
             "entry_id": entry.id
         }
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ====== HELPER FUNCTIONS ======
 def calculate_fertility_probability(entry):
     """Calculate fertility probability 0-100%"""

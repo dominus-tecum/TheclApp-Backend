@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from . import services, schemas
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
 
 router = APIRouter(prefix="/urological", tags=["Urological Progress"])
 
@@ -11,13 +14,22 @@ def get_urological_service(db: Session = Depends(get_db)):
 @router.post("/entries", response_model=schemas.UrologicalEntryResponse)
 async def create_urological_entry(
     entry_data: schemas.UrologicalEntryCreate,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     urological_service: services.UrologicalProgressService = Depends(get_urological_service)
 ):
-    """
-    Create a new urological surgery progress entry
-    """
     try:
+        if str(entry_data.patient_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
         print("📥 UROLOGICAL: Received POST data:", entry_data.dict())
+
+
+               # ✅ CHECK FOR EXISTING ENTRY
+        existing_entry = urological_service.get_entry_by_patient_and_date(
+            entry_data.patient_id, 
+            entry_data.submission_date
+        )
         
         service_data = {
             'patient_id': entry_data.patient_id,
@@ -25,10 +37,36 @@ async def create_urological_entry(
             'submission_date': entry_data.submission_date,
             'surgery_type': entry_data.surgery_type,
             'common_data': entry_data.common_data.dict(),
-            'condition_data': entry_data.condition_data.dict()
+            'condition_data': entry_data.condition_data.dict(),
+            'photo_urls': entry_data.photo_urls if hasattr(entry_data, 'photo_urls') else []
         }
         
-        db_entry = urological_service.create_entry(service_data)
+        if existing_entry:
+            # UPDATE existing entry
+            db_entry = urological_service.update_entry(existing_entry.id, service_data)
+            action = 'UPDATE'
+            print(f"🔄 Updated existing entry ID: {db_entry.id}")
+        else:
+            # CREATE new entry
+            db_entry = urological_service.create_entry(service_data)
+            action = 'CREATE'
+            print(f"🆕 Created new entry ID: {db_entry.id}")
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=urological_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='CREATE',
+            resource_type='UROLOGICAL_ENTRY',
+            patient_id=int(entry_data.patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            new_value=entry_data.dict()
+        )
         
         return schemas.UrologicalEntryResponse(
             id=db_entry.id,
@@ -38,23 +76,41 @@ async def create_urological_entry(
             submission_date=db_entry.submission_date,
             common_data=db_entry.common_data,
             condition_data=db_entry.condition_data,
+            photo_urls=db_entry.photo_urls if hasattr(db_entry, 'photo_urls') else [],
             created_at=db_entry.created_at
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         print("❌ UROLOGICAL POST Error:", str(e))
         raise HTTPException(status_code=500, detail=f"Failed to create urological progress entry: {str(e)}")
 
 @router.get("/entries")
 async def get_all_urological_entries(
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     urological_service: services.UrologicalProgressService = Depends(get_urological_service)
 ):
-    """
-    Get ALL urological surgery entries
-    """
     try:
         print("🔍 UROLOGICAL: Fetching all entries")
         entries = urological_service.get_all_entries()
+        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=urological_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='UROLOGICAL_ENTRIES',
+            patient_id=int(current_user.id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
         
         formatted_entries = []
         for entry in entries:
@@ -67,6 +123,7 @@ async def get_all_urological_entries(
                 "conditionType": "urological",
                 "common_data": entry.common_data,
                 "condition_data": entry.condition_data,
+                "photo_urls": entry.photo_urls if hasattr(entry, 'photo_urls') else [],
                 "created_at": entry.created_at.isoformat() if entry.created_at else None
             })
         
@@ -85,14 +142,32 @@ async def get_all_urological_entries(
 async def check_urological_entry(
     patient_id: int, 
     date: str,
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
     urological_service: services.UrologicalProgressService = Depends(get_urological_service)
 ):
-    """
-    Check if urological entry exists for patient on specific date
-    """
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     try:
         print(f"🔍 UROLOGICAL: Checking entry for patient {patient_id} on {date}")
         exists = urological_service.check_existing_entry(patient_id, date)
+        
+        # ✅ ADD AUDIT LOG
+        log_audit(
+            db=urological_service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='READ',
+            resource_type='UROLOGICAL_ENTRY',
+            patient_id=patient_id,
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        
         return {"exists": exists}
         
     except Exception as e:

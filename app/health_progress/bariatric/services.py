@@ -25,7 +25,8 @@ class BariatricProgressService:
                 submitted_at=datetime.utcnow(),
                 urgency_status=entry_data.get('urgency_status', 'low'),
                 common_data=entry_data.get('common_data', {}),
-                condition_data=entry_data.get('condition_data', {})
+                condition_data=entry_data.get('condition_data', {}),
+                photo_urls=entry_data.get('photo_urls', [])
             )
             
             self.db.add(db_entry)

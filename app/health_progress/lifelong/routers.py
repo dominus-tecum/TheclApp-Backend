@@ -1,228 +1,179 @@
-# app/health_progress/lifelong/routers.py
-from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
-from datetime import datetime
-import logging
-
 from app.database import get_db
+from . import services, schemas
+from app.dependencies import get_current_user  # ← ADD THIS
+from app.models import User  # ← ADD THIS
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
 
-# Configure logging
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/lifelong", tags=["Lifelong"])
 
-router = APIRouter(tags=["lifelong-health"])
+def get_service(db: Session = Depends(get_db)):
+    return services.LifelongService(db)
 
-# Pydantic models for request/response
-class CommonData(BaseModel):
-    blood_pressure_systolic: Optional[str] = None
-    blood_pressure_diastolic: Optional[str] = None
-    energy_level: Optional[int] = None
-    sleep_hours: Optional[int] = None
-    sleep_quality: Optional[int] = None
-    medications: Optional[Dict[str, Any]] = None
-    symptoms: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
-    heart_rate: Optional[str] = None
-    respiratory_rate: Optional[str] = None
-
-class ConditionSpecificData(BaseModel):
-    selected_conditions: List[str] = []
-
-class LifelongEntryCreate(BaseModel):
-    patient_id: int
-    patient_name: str
-    submission_date: str
-    common_data: CommonData
-    condition_data: ConditionSpecificData
-    submitted_at: Optional[str] = None
-
-class LifelongEntryResponse(BaseModel):
-    id: int
-    patient_id: int
-    patient_name: str
-    submission_date: str
-    common_data: Dict[str, Any]
-    condition_data: Dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-
-class AuthCheckResponse(BaseModel):
-    authenticated: bool
-    patient_id: Optional[int] = None
-    patient_name: Optional[str] = None
-
-class AuthInitializeRequest(BaseModel):
-    patient_id: int
-    patient_name: str
-    action: str = "initialize_auth"
-
-class AuthInitializeResponse(BaseModel):
-    success: bool
-    session_id: Optional[str] = None
-    message: str
-
-# ✅ AUTHENTICATION ENDPOINTS
-
-@router.get("/lifelong/entries/{patient_id}", response_model=AuthCheckResponse)
-async def check_authentication_via_lifelong_no_date(patient_id: int, db: Session = Depends(get_db)):
-    """
-    Check authentication via lifelong endpoint WITHOUT date parameter
-    """
+@router.post("/entries", response_model=schemas.LifelongEntryResponse)
+async def create_entry(
+    entry: schemas.LifelongEntryCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    service: services.LifelongService = Depends(get_service)
+):
     try:
-        logger.info(f"🔐 Authentication check requested for patient {patient_id}")
+        entry_dict = entry.dict()
+        patient_id = entry_dict.get('patient_id')
+        if patient_id and str(patient_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
         
-        # For demo purposes, we'll consider any patient ID as authenticated
-        is_authenticated = True
+        # ✅ Use the existing method that handles both create and update
+        db_entry = service.create_or_update_entry(entry_dict)
         
-        response = AuthCheckResponse(
-            authenticated=is_authenticated,
-            patient_id=patient_id,
-            patient_name=f"Patient {patient_id}"
+        # Check if it was an update or create
+        existing = service.get_entry_by_date(patient_id, entry_dict.get('submission_date'))
+        action = 'UPDATE' if existing and existing.id == db_entry.id else 'CREATE'
+        
+        log_audit(
+            db=service.db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action=action,
+            resource_type='LIFELONG_ENTRY',
+            patient_id=int(patient_id),
+            status='success',
+            purpose='TREATMENT',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            new_value=entry_dict
         )
         
-        logger.info(f"✅ Authentication check result for patient {patient_id}: {is_authenticated}")
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ Error in authentication check for patient {patient_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Authentication check failed: {str(e)}")
-
-@router.get("/lifelong/entries/{patient_id}/{date}", response_model=AuthCheckResponse)
-async def check_authentication_via_lifelong_with_date(patient_id: int, date: str, db: Session = Depends(get_db)):
-    """
-    Check authentication via lifelong endpoint WITH date parameter
-    """
-    try:
-        logger.info(f"🔐 Authentication check requested for patient {patient_id} on date {date}")
-        
-        # For demo purposes, we'll consider any patient ID as authenticated
-        is_authenticated = True
-        
-        response = AuthCheckResponse(
-            authenticated=is_authenticated,
-            patient_id=patient_id,
-            patient_name=f"Patient {patient_id}"
+        return schemas.LifelongEntryResponse(
+            id=db_entry.id,
+            patient_id=db_entry.patient_id,
+            patient_name=db_entry.patient_name,
+            submission_date=db_entry.submission_date,
+            common_data=db_entry.common_data,
+            conditions_data=db_entry.conditions_data,
+            status=db_entry.status,
+            created_at=db_entry.created_at,
+            updated_at=db_entry.updated_at
         )
-        
-        logger.info(f"✅ Authentication check result for patient {patient_id} on {date}: {is_authenticated}")
-        return response
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Error in authentication check for patient {patient_id} on {date}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Authentication check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/lifelong/auth/initialize", response_model=AuthInitializeResponse)
-async def initialize_lifelong_auth(auth_data: AuthInitializeRequest, db: Session = Depends(get_db)):
-    """
-    Initialize lifelong authentication session
-    This endpoint is called by the React Native component to initialize auth session
-    """
-    try:
-        logger.info(f"🔐 Initializing lifelong auth for patient {auth_data.patient_id} ({auth_data.patient_name})")
-        
-        # For now, we'll just log and return success
-        response = AuthInitializeResponse(
-            success=True,
-            session_id=f"session_{auth_data.patient_id}_{datetime.now().timestamp()}",
-            message=f"Lifelong authentication initialized for {auth_data.patient_name}"
-        )
-        
-        logger.info(f"✅ Lifelong auth initialized successfully for patient {auth_data.patient_id}")
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ Error initializing lifelong auth: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Auth initialization failed: {str(e)}")
 
-# ✅ LIFELONG AGGREGATE ENDPOINTS
-
-@router.get("/lifelong/entries")
-async def get_lifelong_entries(db: Session = Depends(get_db)):
-    """Get all lifelong health entries across all chronic conditions"""
-    try:
-        all_entries = []
-        
-        # Return empty results since all condition-specific endpoints have been removed
-        return {
-            "entries": all_entries,
-            "total": len(all_entries),
-            "condition_breakdown": {}
-        }
-        
-    except Exception as e:
-        logger.error(f"Error aggregating lifelong entries: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve lifelong entries: {str(e)}")
-
-@router.get("/lifelong/entries/{patient_id}/{date}")
-async def get_patient_lifelong_entries_by_date(patient_id: int, date: str, db: Session = Depends(get_db)):
-    """
-    Get all lifelong entries for a specific patient on a specific date across all conditions
-    """
-    try:
-        all_entries = []
-        
-        # Return empty results since all condition-specific endpoints have been removed
-        return {
-            "entries": all_entries,
-            "total": len(all_entries),
-            "patient_id": patient_id,
-            "date": date,
-            "condition_breakdown": {}
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting patient lifelong entries for {patient_id} on {date}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve patient entries: {str(e)}")
-
-@router.post("/lifelong/entries")
-async def create_lifelong_entries(entry: LifelongEntryCreate, db: Session = Depends(get_db)):
-    """
-    Create lifelong entries for multiple conditions in a single request
-    This endpoint handles submissions from the Lifelong component that tracks multiple conditions
-    """
-    try:
-        results = []
-        selected_conditions = entry.condition_data.selected_conditions
-        
-        # Process selected conditions - now empty since all condition-specific logic has been removed
-        for condition in selected_conditions:
-            try:
-                # All condition-specific logic has been removed
-                results.append({"condition": condition, "action": "skipped", "success": True, "message": "Condition endpoints have been removed"})
-                
-            except Exception as condition_error:
-                logger.error(f"Error processing {condition} entry: {str(condition_error)}")
-                results.append({"condition": condition, "action": "failed", "success": False, "error": str(condition_error)})
-        
-        db.commit()
-        
-        # Check if all operations were successful
-        successful_operations = [r for r in results if r["success"]]
-        failed_operations = [r for r in results if not r["success"]]
-        
-        return {
-            "message": f"Processed {len(successful_operations)} out of {len(selected_conditions)} conditions",
-            "results": results,
-            "successful_count": len(successful_operations),
-            "failed_count": len(failed_operations),
-            "submission_date": entry.submission_date,
-            "patient_id": entry.patient_id
-        }
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error creating lifelong entries: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create lifelong entries: {str(e)}")
-
-# Health check endpoint
-@router.get("/lifelong-health/status")
-async def lifelong_health_status(db: Session = Depends(get_db)):
-    """
-    Health check for lifelong health endpoints
-    """
+@router.get("/entries")
+async def get_all_entries(
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    service: services.LifelongService = Depends(get_service)
+):
+    entries = service.get_all_entries()
+    #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+    
+    # ✅ ADD AUDIT LOG
+    log_audit(
+        db=service.db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='READ',
+        resource_type='LIFELONG_ENTRIES',
+        patient_id=int(current_user.id),
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
     return {
-        "status": "healthy",
-        "service": "lifelong-health-tracker",
-        "timestamp": datetime.now().isoformat()
+        "entries": [
+            {
+                "id": e.id,
+                "patient_id": e.patient_id,
+                "patient_name": e.patient_name,
+                "submission_date": e.submission_date,
+                "common_data": e.common_data,
+                "conditions_data": e.conditions_data,
+                "status": e.status,
+                "created_at": e.created_at.isoformat(),
+                "updated_at": e.updated_at.isoformat()
+            }
+            for e in entries
+        ],
+        "total": len(entries)
     }
+
+@router.get("/entries/{patient_id}/{date}")
+async def get_entry_by_date(
+    patient_id: int, 
+    date: str, 
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    service: services.LifelongService = Depends(get_service)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    entry = service.get_entry_by_date(patient_id, date)
+    
+    # ✅ ADD AUDIT LOG
+    log_audit(
+        db=service.db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='READ',
+        resource_type='LIFELONG_ENTRY',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    if not entry:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "data": {
+            "id": entry.id,
+            "patient_id": entry.patient_id,
+            "patient_name": entry.patient_name,
+            "submission_date": entry.submission_date,
+            "common_data": entry.common_data,
+            "conditions_data": entry.conditions_data,
+            "status": entry.status
+        }
+    }
+
+@router.get("/check/{patient_id}/{date}")
+async def check_entry(
+    patient_id: int, 
+    date: str, 
+    request: Request,  # ← ADD THIS
+    current_user: User = Depends(get_current_user),
+    service: services.LifelongService = Depends(get_service)
+):
+    if str(patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    exists = service.check_existing_entry(patient_id, date)
+    
+    # ✅ ADD AUDIT LOG
+    log_audit(
+        db=service.db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='READ',
+        resource_type='LIFELONG_ENTRY_CHECK',
+        patient_id=patient_id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {"exists": exists, "patient_id": patient_id, "date": date}

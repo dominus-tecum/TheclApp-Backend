@@ -1,6 +1,6 @@
 # app/health_progress/cardiac/schemas.py
 from pydantic import BaseModel, validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 
 class CardiacEntryCreate(BaseModel):
@@ -51,6 +51,7 @@ class CardiacEntryCreate(BaseModel):
     # Optional fields that might be sent
     submittedAt: Optional[str] = None
     dayPostOp: Optional[int] = None
+    photo_urls: Optional[List[str]] = []  # List of photo URLs
 
     @validator('submissionDate')
     def validate_date(cls, v):
@@ -67,7 +68,13 @@ class CardiacEntryResponse(BaseModel):
     submission_date: str
     common_data: Dict[str, Any]
     condition_data: Dict[str, Any]
+    photo_urls: Optional[List[str]] = []  # ✅ ADD THIS
     created_at: str
 
     class Config:
         allow_population_by_field_name = True
+
+        # ✅ ADD THIS BLOCK AT THE END OF THE FILE
+# This rebuilds the models to resolve forward references
+CardiacEntryCreate.model_rebuild()
+CardiacEntryResponse.model_rebuild()

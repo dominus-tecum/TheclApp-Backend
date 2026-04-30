@@ -37,6 +37,9 @@ class UserRead(BaseModel):
     # STAFF-SPECIFIC FIELDS
     specialization: Optional[str] = None
     department: Optional[str] = None
+    
+    # ✅ ADD THIS LINE - Status for approval workflow
+    status: Optional[str] = "pending"  # 'pending' or 'approved'
 
     model_config = {
         "from_attributes": True

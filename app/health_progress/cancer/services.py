@@ -70,10 +70,46 @@ class CancerProgressService:
 
     def create_entry(self, entry_data: Dict[str, Any]) -> CancerEntry:
         """
-        Create a new cancer progress entry with flattened structure
+        Create or update a cancer progress entry with flattened structure
         """
         try:
             print("🔍 CANCER SERVICES: Starting create_entry with flattened structure...")
+            
+            # ✅ CHECK FOR EXISTING ENTRY FIRST
+            existing_entry = self.db.query(CancerEntry).filter(
+                CancerEntry.patient_id == entry_data.get('patient_id'),
+                CancerEntry.submission_date == entry_data.get('submission_date')
+            ).first()
+            
+            if existing_entry:
+                print(f"🔄 CANCER SERVICES: Updating existing entry for {entry_data.get('submission_date')}")
+                
+                # UPDATE existing entry
+                existing_entry.blood_pressure_systolic = entry_data.get('blood_pressure_systolic')
+                existing_entry.blood_pressure_diastolic = entry_data.get('blood_pressure_diastolic')
+                existing_entry.energy_level = entry_data.get('energy_level')
+                existing_entry.sleep_hours = entry_data.get('sleep_hours')
+                existing_entry.sleep_quality = entry_data.get('sleep_quality')
+                existing_entry.medications = entry_data.get('medications')
+                existing_entry.symptoms = entry_data.get('symptoms')
+                existing_entry.notes = entry_data.get('notes')
+                existing_entry.status = entry_data.get('status', 'pending')
+                existing_entry.pain_level = entry_data.get('pain_level')
+                existing_entry.pain_location = entry_data.get('pain_location')
+                existing_entry.side_effects = entry_data.get('side_effects')
+                existing_entry.submitted_at = datetime.utcnow()
+                
+                # Recalculate urgency
+                urgency_status = self.calculate_urgency_level(entry_data)
+                existing_entry.urgency_status = urgency_status
+                
+                self.db.commit()
+                self.db.refresh(existing_entry)
+                print(f"✅ CANCER SERVICES: Entry updated successfully with ID: {existing_entry.id}")
+                return existing_entry
+            
+            # If no existing entry, create new
+            print("🆕 CANCER SERVICES: Creating new entry...")
             
             # ✅ Calculate urgency based on medical values
             urgency_status = self.calculate_urgency_level(entry_data)
@@ -81,13 +117,10 @@ class CancerProgressService:
             
             # ✅ Create entry with EXACT frontend data types
             db_entry = CancerEntry(
-                # Basic info
                 patient_id=entry_data.get('patient_id'),
                 patient_name=entry_data.get('patient_name', ''),
                 submission_date=entry_data.get('submission_date'),
                 status=entry_data.get('status', 'pending'),
-                
-                # Common data (exact frontend types)
                 blood_pressure_systolic=entry_data.get('blood_pressure_systolic'),
                 blood_pressure_diastolic=entry_data.get('blood_pressure_diastolic'),
                 energy_level=entry_data.get('energy_level'),
@@ -96,16 +129,12 @@ class CancerProgressService:
                 medications=entry_data.get('medications'),
                 symptoms=entry_data.get('symptoms'),
                 notes=entry_data.get('notes'),
-                
-                # Cancer-specific fields
                 pain_level=entry_data.get('pain_level'),
                 pain_location=entry_data.get('pain_location'),
                 side_effects=entry_data.get('side_effects'),
-                
-                # Condition type and timestamps
                 condition_type=entry_data.get('condition_type', 'cancer'),
                 submitted_at=datetime.utcnow(),
-                urgency_status=urgency_status  # ✅ Use calculated urgency
+                urgency_status=urgency_status
             )
             
             self.db.add(db_entry)
@@ -118,7 +147,17 @@ class CancerProgressService:
         except Exception as e:
             self.db.rollback()
             print(f"❌ CANCER SERVICES: Error: {str(e)}")
-            raise Exception(f"Error creating cancer entry: {str(e)}")
+            raise Exception(f"Error creating/updating cancer entry: {str(e)}")
+
+
+
+
+
+
+
+
+
+
 
     def get_all_entries(self) -> List[CancerEntry]:
         """
