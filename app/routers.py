@@ -1,7 +1,4 @@
-print("=" * 100)
-print("✅✅✅ ROUTERS.PY IS LOADED - THIS FILE IS ACTIVE ✅✅✅")
-print("=" * 100)
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from . import models, schemas, database
@@ -11,6 +8,9 @@ from pydantic import BaseModel
 from .authentication.auth import get_current_user
 from app.models import User, UserRole
 from app.models import PatientDoctorAssignment
+from app.utils.audit import log_audit
+
+
 
 
 # ========== MEDICAL RECORD SCHEMAS ==========
@@ -377,3 +377,273 @@ def update_user(
     print(f"After update - specialization: {user.specialization}, department: {user.department}")
     
     return user
+
+    # ========== ADMIN MANAGEMENT ENDPOINTS WITH AUDIT LOGS ==========
+import os
+from pydantic import BaseModel
+
+
+class AdminCreateRequest(BaseModel):
+    email: str = "admin@theclapp.com"
+    password: str = "Admin123!"
+    username: str = "admin"
+    name: str = "System Administrator"
+    one_time_token: str
+
+class AdminRemoveRequest(BaseModel):
+    email: str = "admin@theclapp.com"
+    secret_key: str
+
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "change-this-in-production")
+
+@router.post("/admin/create", status_code=201)
+def create_admin_endpoint(
+    admin_data: AdminCreateRequest,
+    request: Request,
+    db: Session = Depends(database.get_db)
+):
+    """Create admin user using one-time token"""
+    
+    # Verify one-time token
+    # Token should be: not expired, not used, matches purpose
+    token_record = db.query(models.OneTimeToken).filter(
+        models.OneTimeToken.token == admin_data.one_time_token,
+        models.OneTimeToken.used == False,
+        models.OneTimeToken.expires_at > datetime.utcnow(),
+        models.OneTimeToken.purpose == 'admin_creation'
+    ).first()
+    
+    if not token_record:
+        log_audit(
+            db=db,
+            user_id=None,
+            username="unknown",
+            user_role="unknown",
+            action='ADMIN_CREATE_FAILED',
+            resource_type='ADMIN',
+            status='denied',
+            details={"reason": "Invalid or expired token", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=403, detail="Invalid or expired token")
+    
+    # Mark token as used (one-time)
+    token_record.used = True
+    token_record.used_at = datetime.utcnow()
+    db.commit()
+    
+    # Check if admin already exists
+    existing_admin = db.query(models.User).filter(
+        models.User.email == admin_data.email
+    ).first()
+    
+    if existing_admin:
+        log_audit(
+            db=db,
+            user_id=None,
+            username="unknown",
+            user_role="unknown",
+            action='ADMIN_CREATE_FAILED',
+            resource_type='ADMIN',
+            status='denied',
+            details={"reason": "Admin already exists", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=400, detail="Admin already exists")
+    
+    # Hash password
+    hashed_password = pwd_context.hash(admin_data.password)
+    
+    # Create new admin user
+    new_admin = models.User(
+        username=admin_data.username,
+        name=admin_data.name,
+        email=admin_data.email,
+        password_hash=hashed_password,
+        role=models.UserRole.ADMIN,
+        is_active=True,
+        status="approved"
+    )
+    
+    db.add(new_admin)
+    db.commit()
+    db.refresh(new_admin)
+    
+    # Log successful admin creation
+    log_audit(
+        db=db,
+        user_id=None,
+        username="one_time_token_creation",
+        user_role="SYSTEM",
+        action='ADMIN_CREATED',
+        resource_type='ADMIN',
+        resource_id=new_admin.id,
+        status='success',
+        details={
+            "created_admin_email": admin_data.email,
+            "created_admin_username": admin_data.username,
+            "token_id": token_record.id
+        },
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        purpose="ADMIN_MANAGEMENT"
+    )
+    
+    return {
+        "message": "Admin created successfully",
+        "admin_id": new_admin.id,
+        "email": new_admin.email,
+        "role": new_admin.role.value if hasattr(new_admin.role, 'value') else str(new_admin.role)
+    }
+
+@router.delete("/admin/remove")
+def remove_admin_endpoint(
+    admin_data: AdminRemoveRequest,
+    request: Request,  # ← Add for IP/user-agent
+    db: Session = Depends(database.get_db)
+):
+    """Remove admin user with audit logging"""
+    
+    # Verify secret key
+    if admin_data.secret_key != ADMIN_SECRET_KEY:
+        log_audit(
+            db=db,
+            user_id=None,
+            username="unknown",
+            user_role="unknown",
+            action='ADMIN_REMOVE_FAILED',
+            resource_type='ADMIN',
+            status='denied',
+            details={"reason": "Invalid secret key", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=403, detail="Invalid secret key")
+    
+    # Find admin
+    admin = db.query(models.User).filter(
+        models.User.email == admin_data.email,
+        models.User.role == models.UserRole.ADMIN
+    ).first()
+    
+    if not admin:
+        log_audit(
+            db=db,
+            user_id=None,
+            username="unknown",
+            user_role="unknown",
+            action='ADMIN_REMOVE_FAILED',
+            resource_type='ADMIN',
+            status='denied',
+            details={"reason": "Admin not found", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=404, detail="Admin not found")
+    
+    # Prevent removing the last admin
+    admin_count = db.query(models.User).filter(
+        models.User.role == models.UserRole.ADMIN
+    ).count()
+    
+    if admin_count <= 1:
+        log_audit(
+            db=db,
+            user_id=admin.id,
+            username=admin.username,
+            user_role="ADMIN",
+            action='ADMIN_REMOVE_FAILED',
+            resource_type='ADMIN',
+            resource_id=admin.id,
+            status='denied',
+            details={"reason": "Cannot remove last admin", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=400, detail="Cannot remove the last admin")
+    
+    # Store admin info before deletion for audit
+    deleted_admin_email = admin.email
+    deleted_admin_username = admin.username
+    deleted_admin_id = admin.id
+    
+    db.delete(admin)
+    db.commit()
+    
+    # ✅ LOG SUCCESSFUL ADMIN REMOVAL
+    log_audit(
+        db=db,
+        user_id=None,
+        username="system_admin_removal",
+        user_role="SYSTEM",
+        action='ADMIN_REMOVED',
+        resource_type='ADMIN',
+        resource_id=deleted_admin_id,
+        status='success',
+        details={
+            "removed_admin_email": deleted_admin_email,
+            "removed_admin_username": deleted_admin_username,
+            "remaining_admin_count": admin_count - 1
+        },
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        purpose="ADMIN_MANAGEMENT"
+    )
+    
+    return {"message": f"Admin {admin_data.email} removed successfully"}
+
+@router.get("/admin/info")
+def get_admin_info_endpoint(
+    email: str = "admin@theclapp.com",
+    db: Session = Depends(database.get_db)
+):
+    admin = db.query(models.User).filter(
+        models.User.email == email,
+        models.User.role == models.UserRole.ADMIN
+    ).first()
+    
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    
+    return {
+        "id": admin.id,
+        "email": admin.email,
+        "username": admin.username,
+        "name": admin.name,
+        "role": admin.role.value if hasattr(admin.role, 'value') else str(admin.role),
+        "status": admin.status,
+        "is_active": admin.is_active
+        # Remove 'created_at' if it causes errors
+    }
+
+@router.get("/admin/list")
+def list_all_admins(
+    secret_key: str,
+    db: Session = Depends(database.get_db)
+):
+    """List all admin users (requires secret key)"""
+    
+    if secret_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Invalid secret key")
+    
+    admins = db.query(models.User).filter(
+        models.User.role == models.UserRole.ADMIN
+    ).all()
+    
+    return {
+        "admins": [
+            {
+                "id": admin.id,
+                "email": admin.email,
+                "username": admin.username,
+                "name": admin.name,
+                "role": admin.role.value if hasattr(admin.role, 'value') else str(admin.role),
+                "status": admin.status,
+                "is_active": admin.is_active
+            }
+            for admin in admins
+        ],
+        "total": len(admins)
+    }

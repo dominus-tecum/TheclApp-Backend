@@ -215,3 +215,14 @@ class PatientDoctorAssignment(Base):
     # Relationships
     patient = relationship("User", foreign_keys=[patient_id])
     doctor = relationship("User", foreign_keys=[doctor_id])
+
+class OneTimeToken(Base):
+    __tablename__ = "one_time_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    purpose = Column(String, nullable=False)  # 'admin_creation', 'password_reset'
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
