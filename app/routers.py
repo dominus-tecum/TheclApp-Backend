@@ -404,7 +404,7 @@ def create_admin_endpoint(
 ):
     """Create admin user using one-time token"""
     
-    # Verify one-time token - just check token is not empty
+    # Simple validation - just check token is not empty
     if not admin_data.one_time_token:
         log_audit(
             db=db,
@@ -414,7 +414,6 @@ def create_admin_endpoint(
             action='ADMIN_CREATE_FAILED',
             resource_type='ADMIN',
             status='denied',
-            details={"reason": "Invalid token", "email": admin_data.email},
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
         )
@@ -434,7 +433,6 @@ def create_admin_endpoint(
             action='ADMIN_CREATE_FAILED',
             resource_type='ADMIN',
             status='denied',
-            details={"reason": "Admin already exists", "email": admin_data.email},
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
         )
@@ -468,10 +466,6 @@ def create_admin_endpoint(
         resource_type='ADMIN',
         resource_id=new_admin.id,
         status='success',
-        details={
-            "created_admin_email": admin_data.email,
-            "created_admin_username": admin_data.username
-        },
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
         purpose="ADMIN_MANAGEMENT"
