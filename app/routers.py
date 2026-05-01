@@ -404,23 +404,21 @@ def create_admin_endpoint(
 ):
     """Create admin user using one-time token"""
     
-    # Verify one-time token
-    # Token should be: not expired, not used, matches purpose
-    # Simple validation - just check token is not empty
-if not admin_data.one_time_token:
-    log_audit(
-        db=db,
-        user_id=None,
-        username="unknown",
-        user_role="unknown",
-        action='ADMIN_CREATE_FAILED',
-        resource_type='ADMIN',
-        status='denied',
-        details={"reason": "Invalid token", "email": admin_data.email},
-        ip_address=request.client.host,
-        user_agent=request.headers.get('user-agent')
-    )
-    raise HTTPException(status_code=403, detail="Invalid token")
+    # Verify one-time token - just check token is not empty
+    if not admin_data.one_time_token:
+        log_audit(
+            db=db,
+            user_id=None,
+            username="unknown",
+            user_role="unknown",
+            action='ADMIN_CREATE_FAILED',
+            resource_type='ADMIN',
+            status='denied',
+            details={"reason": "Invalid token", "email": admin_data.email},
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent')
+        )
+        raise HTTPException(status_code=403, detail="Invalid token")
     
     # Check if admin already exists
     existing_admin = db.query(models.User).filter(
@@ -472,8 +470,7 @@ if not admin_data.one_time_token:
         status='success',
         details={
             "created_admin_email": admin_data.email,
-            "created_admin_username": admin_data.username,
-            "token_id": token_record.id
+            "created_admin_username": admin_data.username
         },
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
@@ -486,6 +483,7 @@ if not admin_data.one_time_token:
         "email": new_admin.email,
         "role": new_admin.role.value if hasattr(new_admin.role, 'value') else str(new_admin.role)
     }
+
 
 @router.delete("/admin/remove")
 def remove_admin_endpoint(
