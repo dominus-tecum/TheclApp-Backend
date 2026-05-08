@@ -46,7 +46,10 @@ from app.health_progress.lifelong.routers import router as lifelong_router
 from starlette.middleware.sessions import SessionMiddleware
 from app.utils.audit import log_audit
 from app.routers import router as main_router
-
+from app.health_progress.womens_reproductive.models import WomensHealthIntake, WomensHealthEntry, WomensHealthPhoto
+from app.health_progress.womens_reproductive.routers import router as womens_health_router
+from app.health_progress.mens_sexual_health.models import MensHealthIntake, MensHealthEntry, MensHealthPhoto
+from app.health_progress.mens_sexual_health.routers import router as mens_health_router
 from app.models import User
 import shutil
 import uuid
@@ -183,6 +186,52 @@ try:
     print("✅ cardiac_surgery_entries table created successfully")
 except Exception as e:
     print(f"⚠️ Cardiac entries table creation note: {e}")
+
+# Add with your other table creations
+
+try:
+    WomensHealthIntake.__table__.create(engine, checkfirst=True)
+    print("✅ womens_health_intake table created successfully")
+except Exception as e:
+    print(f"⚠️ Womens health intake table creation note: {e}")
+
+try:
+    WomensHealthEntry.__table__.create(engine, checkfirst=True)
+    print("✅ womens_health_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Womens health entries table creation note: {e}")
+
+try:
+    WomensHealthPhoto.__table__.create(engine, checkfirst=True)
+    print("✅ womens_health_photos table created successfully")
+except Exception as e:
+    print(f"⚠️ Womens health photos table creation note: {e}")
+
+
+try:
+    MensHealthIntake.__table__.create(engine, checkfirst=True)
+    print("✅ mens_health_intake table created successfully")
+except Exception as e:
+    print(f"⚠️ Mens health intake table creation note: {e}")
+
+try:
+    MensHealthEntry.__table__.create(engine, checkfirst=True)
+    print("✅ mens_health_entries table created successfully")
+except Exception as e:
+    print(f"⚠️ Mens health entries table creation note: {e}")
+
+try:
+    MensHealthPhoto.__table__.create(engine, checkfirst=True)
+    print("✅ mens_health_photos table created successfully")
+except Exception as e:
+    print(f"⚠️ Mens health photos table creation note: {e}")
+
+try:
+    MensHealthCalibration.__table__.create(engine, checkfirst=True)
+    print("✅ mens_health_calibration table created successfully")
+except Exception as e:
+    print(f"⚠️ Mens health calibration table creation note: {e}")    
+
 
 
 
@@ -543,9 +592,8 @@ app.include_router(postnatal_router, prefix="/api/postnatal", tags=["Postnatal"]
 app.include_router(fertility_router, prefix="/api/fertility", tags=["Fertility"])
 app.include_router(security_router, tags=["Security"])
 app.include_router(lifelong_router, prefix="/api")
-
-
-
+app.include_router(womens_health_router, prefix="/api/womens-reproductive-health", tags=["Women's Reproductive Health"])
+app.include_router(mens_health_router, prefix="/api/mens-sexual-health", tags=["Men's Sexual Health"])
 
 # Add this RIGHT BEFORE the last line of main.py
 

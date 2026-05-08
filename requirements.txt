@@ -44,5 +44,7 @@ typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.38.0
 wheel==0.45.1
+opencv-python==4.8.1.78
+numpy==1.24.3
 
 

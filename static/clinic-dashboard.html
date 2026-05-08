@@ -485,6 +485,9 @@
             padding: 60px;
             color: #94a3b8;
         }
+
+     
+
         
         /* Responsive */
         @media (max-width: 768px) {
@@ -664,6 +667,8 @@
                         <option value="heart">❤️ Heart Disease</option>
                         <option value="kidney">🧬 Kidney Disease</option>
                         <option value="cancer">🎗️ Cancer</option>
+                        <option value="mens_sexual">💪 Men's Sexual Health</option>
+                        <option value="womens_reproductive">🌸 Women's Reproductive Health</option>
 
                     </select>
                 </div>
@@ -703,7 +708,9 @@
     <div id="photoModal" class="modal" onclick="closePhotoModal()">
         <img id="fullscreenPhoto" src="">
     </div>
-    
+
+
+             
     <script>
         let allEntries = [];
         let currentTab = 'entries';
@@ -727,7 +734,9 @@
     heart: { name: '❤️ Heart Disease', color: '#DC2626' },
     kidney: { name: '🧬 Kidney Disease', color: '#10B981' },
     cancer: { name: '🎗️ Cancer', color: '#8B5CF6' },
-    medical_record: { name: '📋 Medical Record', color: '#8B5CF6' }
+    medical_record: { name: '📋 Medical Record', color: '#8B5CF6' },
+    mens_sexual: { name: '💪 Men\'s Sexual Health', color: '#3b82f6' },
+    womens_reproductive: { name: '🌸 Women\'s Reproductive Health', color: '#8B5CF6' }
 };
         
         function formatValue(value) {
@@ -2016,6 +2025,155 @@ else if (condition === 'postnatal') {
         </div>`;
     }
 }
+
+
+
+// ========== MEN'S SEXUAL HEALTH ==========
+else if (condition === 'mens_sexual') {
+    const conditionData = entry.condition_data || {};
+    const sizeConcern = conditionData.size_concern || {};
+    
+    // ✅ Only show Size & Girth if there is actual data
+    if (sizeConcern.length_cm || sizeConcern.girth_inches || sizeConcern.confidence_level) {
+        html += `<div class="metric-section"><h4>📏 Size & Girth</h4>
+            <div class="metric-row"><span class="metric-label">Length</span><span class="metric-value">${sizeConcern.length_cm || '—'} cm</span></div>
+            <div class="metric-row"><span class="metric-label">Girth</span><span class="metric-value">${sizeConcern.girth_inches || '—'} inches</span></div>
+            <div class="metric-row"><span class="metric-label">Confidence Level</span><span class="metric-value">${sizeConcern.confidence_level || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Wants Doctor Consult</span><span class="metric-value">${sizeConcern.wants_doctor_consult ? '✓ Yes' : '✗ No'}</span></div>
+        </div>`;
+    }
+       
+    
+    if (conditionData.erectile_dysfunction) {
+        const ed = conditionData.erectile_dysfunction;
+        html += `<div class="metric-section"><h4>⚠️ Erectile Dysfunction</h4>
+            <div class="metric-row"><span class="metric-label">EHS Score</span><span class="metric-value">${ed.erection_hardness_score || '—'}/4</span></div>
+            <div class="metric-row"><span class="metric-label">Morning Erection</span><span class="metric-value">${ed.morning_erection ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Medication</span><span class="metric-value">${ed.medication_taken || '—'}</span></div>
+            <div class="metric-row"><span class="metric-label">Medication Effective</span><span class="metric-value">${ed.medication_effective ? '✓ Yes' : '✗ No'}</span></div>
+        </div>`;
+    }
+    
+    if (conditionData.premature_ejaculation) {
+        const pe = conditionData.premature_ejaculation;
+        html += `<div class="metric-section"><h4>⏱️ Premature Ejaculation</h4>
+            <div class="metric-row"><span class="metric-label">IELT</span><span class="metric-value">${pe.ielt_seconds || '—'} seconds</span></div>
+            <div class="metric-row"><span class="metric-label">Technique Used</span><span class="metric-value">${pe.technique_used || '—'}</span></div>
+            <div class="metric-row"><span class="metric-label">Distress Level</span><span class="metric-value">${pe.distress_level || '—'}/10</span></div>
+        </div>`;
+    }
+    
+    if (conditionData.low_testosterone) {
+        const lt = conditionData.low_testosterone;
+        html += `<div class="metric-section"><h4>⚡ Low Testosterone</h4>
+            <div class="metric-row"><span class="metric-label">Energy Level</span><span class="metric-value">${lt.energy_level || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Libido Level</span><span class="metric-value">${lt.libido_level || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Mood Score</span><span class="metric-value">${lt.mood_score || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Brain Fog</span><span class="metric-value">${lt.brain_fog_score || '—'}/10</span></div>
+        </div>`;
+    }
+    
+    if (conditionData.peyronies) {
+        const pey = conditionData.peyronies;
+        html += `<div class="metric-section"><h4>📐 Peyronie's Disease</h4>
+            <div class="metric-row"><span class="metric-label">Curvature Angle</span><span class="metric-value">${pey.curvature_angle || '—'}°</span></div>
+            <div class="metric-row"><span class="metric-label">Pain Level</span><span class="metric-value">${pey.pain_level || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Plaque Palpable</span><span class="metric-value">${pey.plaque_palpable ? '✓ Yes' : '✗ No'}</span></div>
+        </div>`;
+    }
+    
+    if (conditionData.performance_anxiety) {
+        const pa = conditionData.performance_anxiety;
+        html += `<div class="metric-section"><h4>😰 Performance Anxiety</h4>
+            <div class="metric-row"><span class="metric-label">Anxiety Level</span><span class="metric-value">${pa.anxiety_level || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Trigger</span><span class="metric-value">${pa.trigger || '—'}</span></div>
+            <div class="metric-row"><span class="metric-label">Avoidance Behavior</span><span class="metric-value">${pa.avoidance_behavior ? '✓ Yes' : '✗ No'}</span></div>
+        </div>`;
+    }
+    
+    // Notes
+    if (conditionData.size_concern?.notes) {
+        html += `<div class="metric-section"><h4>📝 Notes</h4>
+            <div class="metric-row"><span class="metric-label">Notes</span><span class="metric-value">${escapeHtml(conditionData.size_concern.notes)}</span></div>
+        </div>`;
+    }
+}
+
+
+
+
+// ========== WOMEN'S REPRODUCTIVE HEALTH ==========
+else if (condition === 'womens_reproductive') {
+    const conditionData = entry.condition_data || {};
+    
+    // Vaginismus
+    if (conditionData.vaginismus) {
+        const vag = conditionData.vaginismus;
+        html += `<div class="metric-section"><h4>🌸 Vaginismus</h4>
+            <div class="metric-row"><span class="metric-label">Dilator Session</span><span class="metric-value">${vag.dilatorSessionCompleted ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Dilator Size</span><span class="metric-value">${vag.dilatorSize || '—'}/6</span></div>
+            <div class="metric-row"><span class="metric-label">Minutes Worn</span><span class="metric-value">${vag.minutesWorn || '—'} min</span></div>
+            <div class="metric-row"><span class="metric-label">Pain During Insertion</span><span class="metric-value">${vag.painDuringInsertion || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Pain After Removal</span><span class="metric-value">${vag.painAfterRemoval || '—'}/10</span></div>
+        </div>`;
+    }
+    
+    // Endometriosis
+    if (conditionData.endometriosis) {
+        const endo = conditionData.endometriosis;
+        html += `<div class="metric-section"><h4>🩸 Endometriosis</h4>
+            <div class="metric-row"><span class="metric-label">Pain Level</span><span class="metric-value">${endo.painLevel || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">On Period</span><span class="metric-value">${endo.onPeriod ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Missed Work</span><span class="metric-value">${endo.missedWork ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Medication</span><span class="metric-value">${endo.medicationTaken || '—'}</span></div>
+        </div>`;
+    }
+    
+    // STI / Genital Skin
+    if (conditionData.sti) {
+        const sti = conditionData.sti;
+        html += `<div class="metric-section"><h4>⚠️ STI / Genital Skin</h4>
+            <div class="metric-row"><span class="metric-label">Symptoms</span><span class="metric-value">${sti.symptoms ? sti.symptoms.join(', ') : '—'}</span></div>
+            <div class="metric-row"><span class="metric-label">On Treatment</span><span class="metric-value">${sti.onTreatment ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Changed Since Last</span><span class="metric-value">${sti.changedSinceLast || '—'}</span></div>
+        </div>`;
+    }
+    
+    // Menopause
+    if (conditionData.menopause) {
+        const meno = conditionData.menopause;
+        html += `<div class="metric-section"><h4>🌡️ Menopause</h4>
+            <div class="metric-row"><span class="metric-label">Hot Flash Count</span><span class="metric-value">${meno.hotFlashCount || '—'}/day</span></div>
+            <div class="metric-row"><span class="metric-label">Hot Flash Severity</span><span class="metric-value">${meno.hotFlashSeverity || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Night Sweats</span><span class="metric-value">${meno.nightSweats ? '✓ Yes' : '✗ No'}</span></div>
+            <div class="metric-row"><span class="metric-label">Vaginal Dryness</span><span class="metric-value">${meno.vaginalDryness || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">HRT Type</span><span class="metric-value">${meno.hrtType || '—'}</span></div>
+        </div>`;
+    }
+    
+    // PCOS
+    if (conditionData.pcos) {
+        const pcos = conditionData.pcos;
+        html += `<div class="metric-section"><h4>⚖️ PCOS</h4>
+            <div class="metric-row"><span class="metric-label">Cycle Day</span><span class="metric-value">${pcos.cycleDay || '—'}</span></div>
+            <div class="metric-row"><span class="metric-label">Acne Severity</span><span class="metric-value">${pcos.acneSeverity || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Facial Hair Severity</span><span class="metric-value">${pcos.facialHairSeverity || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Sugar Cravings</span><span class="metric-value">${pcos.sugarCravings || '—'}/10</span></div>
+            <div class="metric-row"><span class="metric-label">Weight</span><span class="metric-value">${pcos.weight || '—'} kg</span></div>
+            <div class="metric-row"><span class="metric-label">Medications</span><span class="metric-value">${pcos.medications ? pcos.medications.join(', ') : '—'}</span></div>
+        </div>`;
+    }
+    
+    // Notes
+    if (conditionData.vaginismus?.difficulties) {
+        html += `<div class="metric-section"><h4>📝 Notes</h4>
+            <div class="metric-row"><span class="metric-label">Difficulties</span><span class="metric-value">${escapeHtml(conditionData.vaginismus.difficulties)}</span></div>
+        </div>`;
+    }
+}
+
+
+
             
             // ========== FERTILITY ==========
 else if (condition === 'fertility') {
@@ -2340,6 +2498,8 @@ document.querySelector('.main-container').style.display = 'block';
         { url: '/api/health-progress/kidney/entries', type: 'kidney' },
         { url: '/api/health-progress/cancer/entries', type: 'cancer' },
         { url: '/api/lifelong/entries', type: 'lifelong' },
+        { url: '/api/mens-sexual-health/entries', type: 'mens_sexual' },
+        { url: '/api/womens-reproductive-health/entries', type: 'womens_reproductive' },
         { url: '/api/medical-record/', type: 'medical_record' }
     ];
     
@@ -2462,8 +2622,9 @@ for (const patientId of uniquePatients) {
 if (entry.photo_urls && entry.photo_urls.length > 0) {
     photosHtml = `<div class="photo-gallery"><h4>📸 Photos (${entry.photo_urls.length})</h4><div class="photo-grid">`;
     entry.photo_urls.forEach(url => { 
-        if (url && typeof url === 'string') 
-            photosHtml += `<img src="${url}" class="photo-thumb" onclick="event.stopPropagation(); showPhoto('${url}')" onerror="this.style.display='none'">`; 
+        if (url && typeof url === 'string') {
+    photosHtml += `<img src="${url}" class="photo-thumb" onclick="event.stopPropagation(); showPhoto('${url}')" onerror="this.style.display='none'">`;
+}
     });
     photosHtml += `</div></div>`;
 }
