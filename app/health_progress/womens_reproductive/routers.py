@@ -981,3 +981,55 @@ def get_all_entries(
         "success": True,
         "entries": result_entries
     }
+
+@router.get("/intake/active")
+def get_active_intake(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    intake = db.query(WomensHealthIntake).filter(
+        WomensHealthIntake.patient_id == current_user.id,
+        WomensHealthIntake.is_active == True
+    ).first()
+    
+    if not intake:
+        return {"has_intake": False}
+    
+    # Parse recommendations if it's a string
+    recommendations = intake.recommendations
+    if isinstance(recommendations, str):
+        import json
+        recommendations = json.loads(recommendations)
+    
+    # Check the actual structure
+    print("🔍 Recommendations structure:", type(recommendations))
+    print("🔍 Recommendations content:", recommendations)
+    
+    conditions = []
+    condition_names = []
+    
+    # The recommendations might be under a "conditions" key
+    if "conditions" in recommendations:
+        rec_data = recommendations["conditions"]
+    else:
+        rec_data = recommendations
+    
+    for cond, data in rec_data.items():
+        if isinstance(data, dict) and data.get("recommended"):
+            conditions.append(cond)
+            names = {
+                "vaginismus": "Vaginismus",
+                "endometriosis": "Endometriosis", 
+                "sti": "STI / Genital Skin",
+                "menopause": "Menopause",
+                "pcos": "PCOS"
+            }
+            if cond in names:
+                condition_names.append(names[cond])
+    
+    return {
+        "has_intake": True,
+        "intake_id": intake.id,
+        "conditions": conditions,
+        "condition_names": condition_names
+    }

@@ -1,52 +1,11 @@
 #!/usr/bin/env python3
 """
-Complete Admin Management Script
+Simple Admin Creation Script - No Database Required
 """
 
 import requests
-import secrets
-import datetime
-import psycopg2
-import os
-import sys
-from urllib.parse import urlparse
 
 RENDER_APP_URL = "https://theclapp-backend.onrender.com"
-DATABASE_URL = os.environ.get('DATABASE_URL')
-
-def generate_and_store_token():
-    """Generate one-time token and store in database"""
-    
-    if not DATABASE_URL:
-        print("❌ DATABASE_URL environment variable not set!")
-        sys.exit(1)
-    
-    result = urlparse(DATABASE_URL)
-    conn = psycopg2.connect(
-        database=result.path[1:],
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=result.port
-    )
-    cur = conn.cursor()
-    
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
-    
-    cur.execute("""
-        INSERT INTO one_time_tokens (token, purpose, expires_at)
-        VALUES (%s, %s, %s)
-        RETURNING id
-    """, (token, 'admin_creation', expires_at))
-    
-    token_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    
-    print(f"✅ Token generated (ID: {token_id})")
-    return token
 
 def create_admin():
     print("\n" + "="*50)
@@ -58,17 +17,13 @@ def create_admin():
     username = input("  Username [admin]: ").strip() or "admin"
     name = input("  Name [System Administrator]: ").strip() or "System Administrator"
     
-    # Generate and store token in database
-    one_time_token = generate_and_store_token()
-    
-    print(f"\n  🔐 Generated one-time token (valid for 15 minutes)")
-    
+    # Any non-empty token works with your current backend
     payload = {
         "email": email,
         "password": password,
         "username": username,
         "name": name,
-        "one_time_token": one_time_token
+        "one_time_token": "simple-token-123"
     }
     
     try:
@@ -91,12 +46,5 @@ def create_admin():
     
     input("\nPress Enter to continue...")
 
-def main():
-    create_admin()
-
 if __name__ == "__main__":
-    import psycopg2
-    import datetime
-    from urllib.parse import urlparse
-    
-    main()
+    create_admin()

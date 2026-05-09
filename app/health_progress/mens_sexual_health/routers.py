@@ -1786,3 +1786,45 @@ async def measure_from_photo_upload(
         
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+
+@router.get("/intake/active")
+def get_active_intake(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    intake = db.query(MensHealthIntake).filter(
+        MensHealthIntake.patient_id == current_user.id,
+        MensHealthIntake.is_active == True
+    ).first()
+    
+    if not intake:
+        return {"has_intake": False}
+    
+    # Extract recommended conditions
+    recommendations = intake.recommendations
+    conditions = [cond for cond, data in recommendations.items() if data.get("recommended")]
+    
+    # Get condition names for display
+    condition_names = []
+    for cond in conditions:
+        names = {
+            "size_concern": "Size & Girth",
+            "erectile_dysfunction": "Erectile Dysfunction",
+            "premature_ejaculation": "Premature Ejaculation",
+            "low_testosterone": "Low Testosterone",
+            "peyronies": "Peyronie's Disease",
+            "performance_anxiety": "Performance Anxiety"
+        }
+        if cond in names:
+            condition_names.append(names[cond])
+    
+    return {
+        "has_intake": True,
+        "intake_id": intake.id,
+        "conditions": conditions,
+        "condition_names": condition_names,
+        "answers": intake.answers
+        # REMOVE THIS LINE: "created_at": intake.created_at.isoformat() if intake.created_at else None
+    }
