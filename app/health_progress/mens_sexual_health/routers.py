@@ -1265,7 +1265,7 @@ async def measure_manual_boxes(
         os.remove(temp_path)
         
         base_url = str(request.base_url).rstrip('/')
-        preview_url = f"{base_url}/{preview_path.replace('\\', '/')}"
+        preview_url = base_url + "/" + preview_path.replace("\\", "/")
         
         return {
             "success": True,
