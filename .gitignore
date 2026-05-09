@@ -148,4 +148,7 @@ ModelTraining/Pipfile
 ModelTraining/Pipfile.lock
 ModelTraining/requirements.txt
 ModelTraining/package-lock.json
-ModelTraining/package.json
+ModelTraining/package.json"analyze_image.py" 
+"create_admin.py" 
+"curl" 
+"measure.py" 
