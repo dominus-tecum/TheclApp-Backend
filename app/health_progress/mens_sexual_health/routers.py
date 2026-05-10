@@ -9,7 +9,7 @@ from app.models import User
 from app.utils.audit import log_audit
 from fastapi import Request
 from datetime import date, datetime, timedelta
-from .detection import measure_from_detection
+
 import json
 import os
 import uuid
