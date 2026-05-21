@@ -427,6 +427,7 @@ def update_super_admin(
     email: str = Body(None),
     password: str = Body(None),
     username: str = Body(None),
+    organization_id: int = Body(None),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -487,6 +488,7 @@ def create_super_admin_temp(
         existing.is_super_admin = True
         existing.role = UserRole.ADMIN
         existing.status = 'approved'
+        existing.organization_id = None  # ← Also add this for existing users
         db.commit()
         return {"message": "Existing user upgraded to super admin"}
     
@@ -497,11 +499,11 @@ def create_super_admin_temp(
         password_hash=hashed,
         role=UserRole.ADMIN,
         is_super_admin=True,
-        organization_id=1,
+        organization_id=None,  # ← CHANGED from 1 to None
         status='approved',
         name=username
     )
     db.add(new_admin)
     db.commit()
     
-    return {"message": "Super admin created", "user_id": new_admin.id}       
+    return {"message": "Super admin created", "user_id": new_admin.id}     
