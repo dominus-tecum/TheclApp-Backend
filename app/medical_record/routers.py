@@ -260,14 +260,15 @@ def get_medical_record(
 
 @router.post("/")
 def create_medical_record(
-        if current_user.get('role') not in ['doctor', 'admin']:
-        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+        
     record_data: MedicalRecordCreateRequest, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Create new medical record"""
     try:
         from app.medical_record import services
@@ -299,8 +300,7 @@ def create_medical_record(
 
 @router.put("/{record_id}")
 def update_medical_record(
-        if current_user.get('role') not in ['doctor', 'admin']:
-        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+        
     record_id: str, 
     record_data: MedicalRecordUpdateRequest, 
     request: Request,
@@ -308,6 +308,8 @@ def update_medical_record(
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Update medical record"""
     try:
         from app.medical_record import services
@@ -344,14 +346,15 @@ def update_medical_record(
 
 @router.delete("/{record_id}")
 def delete_medical_record(
-        if current_user.get('role') not in ['doctor', 'admin']:
-        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+        
     record_id: str, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Delete medical record"""
     try:
         from app.medical_record import services
@@ -387,14 +390,15 @@ def delete_medical_record(
 
 @router.post("/lab-results")
 def create_lab_result(
-        if current_user.get('role') not in ['doctor', 'admin']:
-        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+        
     lab_data: LabResultRequest, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Create lab result"""
     try:
         from app.medical_record import services
@@ -481,14 +485,15 @@ def get_lab_results(
 
 @router.post("/prescriptions")
 def create_prescription(
-        if current_user.get('role') not in ['doctor', 'admin']:
-        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+        
     prescription_data: PrescriptionRequest, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Create prescription"""
     try:
         from app.medical_record import services
