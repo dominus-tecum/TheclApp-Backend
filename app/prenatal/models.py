@@ -10,6 +10,7 @@ class PrenatalEntry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     patient_id = Column(String, nullable=False)
     patient_name = Column(String, nullable=False)
+    organization_id = Column(Integer, nullable=False, default=1)
     submission_date = Column(String, nullable=False)
     condition_type = Column(String, default='prenatal')
     

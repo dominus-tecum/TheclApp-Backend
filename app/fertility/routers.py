@@ -3,11 +3,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from app.utils.audit import log_audit
-
 from app.models import User
-
-
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 from app.database import get_db
+from app.dependencies import get_visible_patient_ids
 from app.fertility.models import (
     FertilityEntry, FertilityProfile, Patient,
     # ALL ENUMS used in insights functions:
@@ -82,7 +82,8 @@ def get_patient_by_id(
     patient_id: str,
     request: Request,
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get patient by ID or user_id (handles both string '3' and integer 1)"""
     print(f"🔍 [PATIENT-BY-ID] Called with patient_id='{patient_id}' (type: {type(patient_id)})")
@@ -159,7 +160,8 @@ def get_entry_by_patient_and_date(
     date: str,
     request: Request,
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     """Check if entry exists for patient on specific date"""
     print(f"🔍 [CHECK-ENTRY] Checking entry for patient {patient_id} on {date}")
@@ -200,17 +202,30 @@ def get_fertility_entries(
     pagination: PaginationParams = Depends(),
     request: Request = None,
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get fertility entries with filtering and pagination"""
     print(f"🔍 [FERTILITY-ENTRIES] ENTRY POINT - Request received")
     print(f"🔍 [FERTILITY-ENTRIES] Patient ID from dependency: {patient_id}")
+
+     # ✅ SUPER ADMIN CANNOT SEE PATIENT DATA
+    if current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Access denied")
     
     print(f"✅ [FERTILITY-ENTRIES] Authentication SUCCESS")
     
     entry_service = FertilityEntryService(db)
-    entries, total = entry_service.get_entries(patient_id, filters, pagination)
+
+    # ✅ GET VISIBLE PATIENT IDs BASED ON ROLE
+    visible_patient_ids = get_visible_patient_ids(current_user, db)
     
+    # ✅ PASS TO SERVICE (ONLY ONE CALL)
+    entries, total = entry_service.get_entries(
+        patient_id, filters, pagination, org.id, visible_patient_ids
+    )
+        
+       
     log_audit(
         db=db,
         user_id=current_user.get('id'),
@@ -278,7 +293,8 @@ def get_fertility_entries(
 async def get_all_fertility_entries(
     request: Request,
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     try:
         entries = db.query(FertilityEntry).all()
@@ -421,6 +437,7 @@ def get_fertility_entry(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get a specific fertility entry"""
     entry_service = FertilityEntryService(db)
@@ -452,6 +469,7 @@ def update_fertility_entry(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Update a fertility entry"""
     entry_service = FertilityEntryService(db)
@@ -483,6 +501,7 @@ def delete_fertility_entry(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Delete a fertility entry"""
     entry_service = FertilityEntryService(db)
@@ -513,6 +532,7 @@ def get_entry_by_date(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get fertility entry by date"""
     entry_service = FertilityEntryService(db)
@@ -542,6 +562,7 @@ def get_cycle_entries(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all entries for a specific cycle"""
     entry_service = FertilityEntryService(db)
@@ -572,6 +593,7 @@ def create_fertility_profile(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create a fertility profile"""
     profile_service = FertilityProfileService(db)
@@ -601,6 +623,7 @@ def get_fertility_profile(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get fertility profile"""
     profile_service = FertilityProfileService(db)
@@ -630,6 +653,7 @@ def update_fertility_profile(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Update fertility profile"""
     profile_service = FertilityProfileService(db)
@@ -659,6 +683,7 @@ def delete_fertility_profile(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Delete fertility profile"""
     profile_service = FertilityProfileService(db)
@@ -689,6 +714,7 @@ def analyze_cycle(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Analyze fertility cycle and generate summary"""
     analysis_service = CycleAnalysisService(db)
@@ -731,6 +757,7 @@ def generate_doctor_summary(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Generate doctor visit summary"""
     analysis_service = CycleAnalysisService(db)
@@ -767,6 +794,7 @@ def generate_partner_update(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Generate partner update"""
     patient_service = PatientService(db)
@@ -786,7 +814,7 @@ def generate_partner_update(
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     
-    from services import FertilityCycleCalculator
+    from app.fertility.services import FertilityCycleCalculator
     calculator = FertilityCycleCalculator()
     
     fertility_window = {"start": 0, "end": 0}
@@ -858,6 +886,7 @@ def get_cycle_statistics(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get cycle statistics"""
     analysis_service = CycleAnalysisService(db)
@@ -904,6 +933,7 @@ def get_bbt_chart_data(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get BBT chart data"""
     entry_service = FertilityEntryService(db)
@@ -954,6 +984,7 @@ def export_cycle_summary_text(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Export cycle summary as text"""
     patient_service = PatientService(db)
@@ -973,7 +1004,7 @@ def export_cycle_summary_text(
     profile_service = FertilityProfileService(db)
     profile = profile_service.get_profile(patient_id)
     
-    from services import FertilityCycleCalculator
+    from app.fertility.services import FertilityCycleCalculator
     calculator = FertilityCycleCalculator()
     
     fertility_window = {"start": 0, "end": 0}
@@ -1046,6 +1077,7 @@ def export_emergency_card(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Export emergency card"""
     patient_service = PatientService(db)
@@ -1107,6 +1139,7 @@ def validate_fertility_entry(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Validate fertility entry data"""
     errors = []
@@ -1182,6 +1215,7 @@ def create_or_update_fertility_entry(
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create or update fertility entry with insights"""
     
@@ -1481,3 +1515,6 @@ def entry_to_dict(entry):
 def include_fertility_routes(app):
     """Include all fertility routes in the FastAPI app"""
     app.include_router(router, prefix="/api/fertility", tags=["Fertility"])
+
+
+

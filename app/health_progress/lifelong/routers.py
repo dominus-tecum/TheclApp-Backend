@@ -5,6 +5,8 @@ from app.dependencies import get_current_user  # ← ADD THIS
 from app.models import User  # ← ADD THIS
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.utils.audit import log_audit
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 
 router = APIRouter(prefix="/lifelong", tags=["Lifelong"])
 
@@ -16,7 +18,8 @@ async def create_entry(
     entry: schemas.LifelongEntryCreate,
     request: Request,
     current_user: User = Depends(get_current_user),
-    service: services.LifelongService = Depends(get_service)
+    service: services.LifelongService = Depends(get_service),
+    org: Organization = Depends(get_current_organization)
 ):
     try:
         entry_dict = entry.dict()
@@ -25,10 +28,10 @@ async def create_entry(
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # ✅ Use the existing method that handles both create and update
-        db_entry = service.create_or_update_entry(entry_dict)
+        db_entry = service.create_or_update_entry(entry_dict, org.id)
         
         # Check if it was an update or create
-        existing = service.get_entry_by_date(patient_id, entry_dict.get('submission_date'))
+        existing = service.get_entry_by_date(patient_id, entry_dict.get('submission_date'), org.id)
         action = 'UPDATE' if existing and existing.id == db_entry.id else 'CREATE'
         
         log_audit(
@@ -65,22 +68,42 @@ async def create_entry(
 
 @router.get("/entries")
 async def get_all_entries(
-    request: Request,  # ← ADD THIS
-    current_user: User = Depends(get_current_user),
-    service: services.LifelongService = Depends(get_service)
+    request: Request,
+    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    service: services.LifelongService = Depends(get_service),
+    org: Organization = Depends(get_current_organization),
+    db: Session = Depends(get_db)  # ← ADDED: db parameter for doctor filter
 ):
-    entries = service.get_all_entries()
-    #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+    # ← ADDED: Super admin check
+    if current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Access denied")
     
-    # ✅ ADD AUDIT LOG
+    # ← ADDED: Doctor filter
+    if current_user.get('role') == 'doctor':
+        from app.models import PatientDoctorAssignment
+        assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.end_date == None
+        ).all()
+        patient_ids = [a[0] for a in assignments]
+        
+        entries = service.get_all_entries(org.id)
+        if patient_ids:
+            entries = [e for e in entries if e.patient_id in patient_ids]
+        else:
+            entries = []
+    else:
+        entries = service.get_all_entries(org.id)
+    
+    # ✅ ADD AUDIT LOG (YOUR EXISTING CODE - with .get() changes)
     log_audit(
         db=service.db,
-        user_id=current_user.id,
-        username=current_user.username,
-        user_role=current_user.role.value,
+        user_id=current_user.get('id'),  # ← CHANGED
+        username=current_user.get('username'),  # ← CHANGED
+        user_role=current_user.get('role'),  # ← CHANGED
         action='READ',
         resource_type='LIFELONG_ENTRIES',
-        patient_id=int(current_user.id),
+        patient_id=int(current_user.get('id')),  # ← CHANGED
         status='success',
         purpose='TREATMENT',
         ip_address=request.client.host,
@@ -111,12 +134,13 @@ async def get_entry_by_date(
     date: str, 
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    service: services.LifelongService = Depends(get_service)
+    service: services.LifelongService = Depends(get_service),
+    org: Organization = Depends(get_current_organization)
 ):
     if str(patient_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    entry = service.get_entry_by_date(patient_id, date)
+    entry = service.get_entry_by_date(patient_id, date, org.id)
     
     # ✅ ADD AUDIT LOG
     log_audit(
@@ -154,12 +178,13 @@ async def check_entry(
     date: str, 
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    service: services.LifelongService = Depends(get_service)
+    service: services.LifelongService = Depends(get_service),
+    org: Organization = Depends(get_current_organization)
 ):
     if str(patient_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    exists = service.check_existing_entry(patient_id, date)
+    exists = service.check_existing_entry(patient_id, date,  org.id)
     
     # ✅ ADD AUDIT LOG
     log_audit(

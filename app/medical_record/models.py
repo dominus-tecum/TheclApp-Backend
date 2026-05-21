@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, JSON
+from sqlalchemy import Column, Integer, String, DateTime, JSON
 from sqlalchemy.sql import func
 import uuid
 
@@ -14,6 +14,7 @@ class MedicalRecord(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     patient_id = Column(String, nullable=False)
     patient_name = Column(String, nullable=False)
+    organization_id = Column(Integer, nullable=False, default=1)
     type = Column(String, nullable=False)  # e.g., "Blood Test", "X-Ray", "Consultation"
     category = Column(String, nullable=False)  # "Lab Results", "Prescriptions", "Medical History"
     doctor = Column(String, nullable=False)

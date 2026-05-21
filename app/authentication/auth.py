@@ -22,8 +22,8 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-def authenticate_user(db: Session, username: str, password: str):
-    user = db.query(User).filter(User.username == username).first()
+def authenticate_user(db: Session, email: str, password: str):
+    user = db.query(User).filter(User.email == email).first()
     if not user:
         return False
     if not verify_password(password, user.password_hash):
@@ -80,7 +80,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         "role": user.role.value,
         "phone_number": user.phone_number,
         "department": user.department,
-        "specialization": user.specialization
+        "specialization": user.specialization,
+        "is_super_admin": user.is_super_admin == 1,
+        "organization_id": user.organization_id 
     }
     
     print(f"✅ [AUTH] Returning user: {user.username} (ID: {user.id})")

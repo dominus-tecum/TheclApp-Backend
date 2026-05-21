@@ -6,10 +6,11 @@ from .schemas import PostnatalCreate, PostnatalProfileCreate
 class PostnatalService:
     
     @staticmethod
-    def create_or_update_profile(db: Session, patient_id: str, profile_data: PostnatalProfileCreate):
+    def create_or_update_profile(db: Session, patient_id: str, profile_data: PostnatalProfileCreate,organization_id: int):
         # Check if profile already exists
         existing_profile = db.query(PostnatalProfile).filter(
-            PostnatalProfile.patient_id == patient_id
+            PostnatalProfile.patient_id == patient_id,
+            PostnatalProfile.organization_id == organization_id 
         ).first()
         
         if existing_profile:
@@ -28,6 +29,7 @@ class PostnatalService:
             db_profile = PostnatalProfile(
                 patient_id=patient_id,
                 patient_name=profile_data.patient_name,
+                organization_id=organization_id,
                 delivery_date=profile_data.delivery_date,
                 delivery_type=profile_data.delivery_type,
                 infant_name=profile_data.infant_name,
@@ -42,15 +44,16 @@ class PostnatalService:
             return db_profile
     
     @staticmethod
-    def get_profile(db: Session, patient_id: str):
+    def get_profile(db: Session, patient_id: str, organization_id: int):
         return db.query(PostnatalProfile).filter(
-            PostnatalProfile.patient_id == patient_id
+            PostnatalProfile.patient_id == patient_id,
+            PostnatalProfile.organization_id == organization_id 
         ).first()
     
     @staticmethod
-    def create_postnatal_entry(db: Session, entry: PostnatalCreate):
+    def create_postnatal_entry(db: Session, entry: PostnatalCreate, organization_id: int):
         # Check if entry already exists
-        existing_entry = PostnatalService.check_existing_entry(db, entry.patient_id, entry.submission_date)
+        existing_entry = PostnatalService.check_existing_entry(db, entry.patient_id, entry.submission_date, organization_id)
         
         if existing_entry:
             # Update existing entry
@@ -141,6 +144,7 @@ class PostnatalService:
             db_entry = PostnatalEntry(
                 patient_id=entry.patient_id,
                 patient_name=entry.patient_name,
+                organization_id=organization_id,
                 infant_name=entry.infant_name,
                 submission_date=entry.submission_date,
                 condition_type=entry.condition_type,
@@ -227,18 +231,22 @@ class PostnatalService:
             return db_entry
     
     @staticmethod
-    def check_existing_entry(db: Session, patient_id: str, submission_date: date):
+    def check_existing_entry(db: Session, patient_id: str, submission_date: date, organization_id: int):
         return db.query(PostnatalEntry).filter(
             PostnatalEntry.patient_id == patient_id,
-            PostnatalEntry.submission_date == submission_date
+            PostnatalEntry.submission_date == submission_date,
+            PostnatalEntry.organization_id == organization_id
         ).first()
     
     @staticmethod
-    def get_all_postnatal_entries(db: Session):
-        return db.query(PostnatalEntry).all()
+    def get_all_postnatal_entries(db: Session, organization_id: int):
+        return db.query(PostnatalEntry).filter(
+            PostnatalEntry.organization_id == organization_id 
+        ).all()
     
     @staticmethod
-    def get_patient_entries(db: Session, patient_id: str):
+    def get_patient_entries(db: Session, patient_id: str, organization_id: int):
         return db.query(PostnatalEntry).filter(
-            PostnatalEntry.patient_id == patient_id
+            PostnatalEntry.patient_id == patient_id,
+            PostnatalEntry.organization_id == organization_id
         ).all()

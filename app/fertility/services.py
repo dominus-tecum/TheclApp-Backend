@@ -90,7 +90,8 @@ class FertilityEntryService:
         self,
         patient_id: int,
         entry_data: FertilityEntryCreate,
-        fertility_profile: Optional[FertilityProfile] = None
+        fertility_profile: Optional[FertilityProfile] = None,
+        organization_id: int = None
     ) -> FertilityEntry:
         """Create a new fertility entry"""
         
@@ -133,6 +134,7 @@ class FertilityEntryService:
         # Create entry
         db_entry = FertilityEntry(
             patient_id=patient_id,
+            organization_id=organization_id,
             patient_name=patient.name,
             cycle_day=cycle_day,
             predicted_ovulation_day=predicted_ovulation_day,
@@ -160,13 +162,15 @@ class FertilityEntryService:
         self,
         entry_id: int,
         patient_id: int,
-        update_data: FertilityEntryUpdate
+        update_data: FertilityEntryUpdate,
+        organization_id: int = None
     ) -> FertilityEntry:
         """Update an existing fertility entry"""
         entry = self.db.query(FertilityEntry).filter(
             and_(
                 FertilityEntry.id == entry_id,
-                FertilityEntry.patient_id == patient_id
+                FertilityEntry.patient_id == patient_id,
+                FertilityEntry.organization_id == organization_id
             )
         ).first()
         
@@ -219,12 +223,13 @@ class FertilityEntryService:
         
         return entry
     
-    def get_entry(self, entry_id: int, patient_id: int) -> FertilityEntry:
+    def get_entry(self, entry_id: int, patient_id: int, organization_id: int = None) -> FertilityEntry:
         """Get a specific fertility entry"""
         entry = self.db.query(FertilityEntry).filter(
             and_(
                 FertilityEntry.id == entry_id,
-                FertilityEntry.patient_id == patient_id
+                FertilityEntry.patient_id == patient_id,
+                FertilityEntry.organization_id == organization_id
             )
         ).first()
         
@@ -240,12 +245,23 @@ class FertilityEntryService:
         self,
         patient_id: int,
         filters: Optional[FertilityEntryFilter] = None,
-        pagination: Optional[PaginationParams] = None
+        pagination: Optional[PaginationParams] = None,
+        organization_id: int = None,
+        visible_patient_ids: List[int] = None 
     ) -> Tuple[List[FertilityEntry], int]:
         """Get fertility entries with filtering and pagination"""
         query = self.db.query(FertilityEntry).filter(
-            FertilityEntry.patient_id == patient_id
+            FertilityEntry.patient_id == patient_id,
+            FertilityEntry.organization_id == organization_id
         )
+
+
+        # ✅ APPLY DOCTOR PATIENT FILTER (if provided)
+        if visible_patient_ids is not None:
+           if not visible_patient_ids:
+               return [], 0  # No patients assigned, return empty
+        query = query.filter(FertilityEntry.patient_id.in_(visible_patient_ids))
+
         
         # Apply filters
         if filters:
@@ -277,6 +293,11 @@ class FertilityEntryService:
         
         entries = query.all()
         return entries, total
+
+
+
+
+
     
     def get_entry_by_date(self, patient_id: int, date_str: str) -> Optional[FertilityEntry]:
         """Get fertility entry by date"""
@@ -287,12 +308,13 @@ class FertilityEntryService:
             )
         ).first()
     
-    def delete_entry(self, entry_id: int, patient_id: int) -> bool:
+    def delete_entry(self, entry_id: int, patient_id: int, organization_id: int = None) -> bool:
         """Delete a fertility entry"""
         entry = self.db.query(FertilityEntry).filter(
             and_(
                 FertilityEntry.id == entry_id,
-                FertilityEntry.patient_id == patient_id
+                FertilityEntry.patient_id == patient_id,
+                FertilityEntry.organization_id == organization_id
             )
         ).first()
         
@@ -306,12 +328,13 @@ class FertilityEntryService:
         self.db.commit()
         return True
     
-    def get_cycle_entries(self, patient_id: int, cycle_number: int) -> List[FertilityEntry]:
+    def get_cycle_entries(self, patient_id: int, cycle_number: int, organization_id: int = None) -> List[FertilityEntry]:
         """Get all entries for a specific cycle"""
         # This is a simplified implementation
         # In a real app, you'd need to determine cycle boundaries
         entries = self.db.query(FertilityEntry).filter(
-            FertilityEntry.patient_id == patient_id
+            FertilityEntry.patient_id == patient_id,
+            FertilityEntry.organization_id == organization_id
         ).order_by(FertilityEntry.submission_date).all()
         
         # Group by cycle (simplified)

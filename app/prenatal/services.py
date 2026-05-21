@@ -7,9 +7,9 @@ from .schemas import PrenatalCreate
 class PrenatalService:
     
     @staticmethod
-    def create_prenatal_entry(db: Session, entry: PrenatalCreate):
+    def create_prenatal_entry(db: Session, entry: PrenatalCreate, organization_id: int):
         # Check if entry already exists
-        existing_entry = PrenatalService.check_existing_entry(db, entry.patient_id, entry.submission_date)
+        existing_entry = PrenatalService.check_existing_entry(db, entry.patient_id, entry.submission_date, organization_id)
         
         if existing_entry:
             # Update existing entry with flat fields
@@ -60,6 +60,7 @@ class PrenatalService:
             db_entry = PrenatalEntry(
                 patient_id=entry.patient_id,
                 patient_name=entry.patient_name,
+                organization_id=organization_id,
                 submission_date=entry.submission_date,
                 condition_type=entry.condition_type,
                 status=entry.status,
@@ -109,12 +110,15 @@ class PrenatalService:
             return db_entry
     
     @staticmethod
-    def check_existing_entry(db: Session, patient_id: str, date: date):
+    def check_existing_entry(db: Session, patient_id: str, date: date, organization_id: int):
         return db.query(PrenatalEntry).filter(
             PrenatalEntry.patient_id == patient_id,
-            PrenatalEntry.submission_date == date
+            PrenatalEntry.submission_date == date,
+            PrenatalEntry.organization_id == organization_id
         ).first()
     
     @staticmethod
-    def get_all_prenatal_entries(db: Session):
-        return db.query(PrenatalEntry).all()
+    def get_all_prenatal_entries(db: Session, organization_id: int):
+        return db.query(PrenatalEntry).filter(
+            PrenatalEntry.organization_id == organization_id  # ← ADD THIS
+        ).all()

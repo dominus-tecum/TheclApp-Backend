@@ -346,9 +346,28 @@
                         </table>
                     </div>
                 </div>
-            </div>
-        </div>
+
+
+                    <!-- Pending Patient Approvals -->
+<div class="card">
+    <h2>⏳ Pending Patient Approvals</h2>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Registered</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="pendingPatientsTable">
+                <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+        </table>
     </div>
+</div>
     
     <script>
         let authToken = null;
@@ -409,6 +428,7 @@ function toggleRegPassword() {
                     // Check if user is admin
                     if (data.user.role === 'admin') {
                         authToken = data.access_token;
+                        data.user.organization_id = data.user.organization_id || null;
                         localStorage.setItem('adminToken', authToken);
                         localStorage.setItem('adminUser', JSON.stringify(data.user));
                         showDashboard();
@@ -429,54 +449,62 @@ function toggleRegPassword() {
         });
         
         // Register staff handler
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const staffData = {
-                username: document.getElementById('regUsername').value,
-                email: document.getElementById('regEmail').value,
-                password: document.getElementById('regPassword').value,
-                name: document.getElementById('regName').value,
-                phone_number: document.getElementById('regPhone').value,
-                role: document.getElementById('regRole').value
-            };
-            
-            const messageDiv = document.getElementById('registerMessage');
-            
-            try {
-                const response = await fetch('/api/auth/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify(staffData)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    messageDiv.className = 'alert alert-success';
-                    messageDiv.textContent = 'Staff registered successfully! They can now login.';
-                    messageDiv.classList.remove('hidden');
-                    document.getElementById('registerForm').reset();
-                    loadStaffList();
-                    loadStats();
-                    
-                    setTimeout(() => {
-                        messageDiv.classList.add('hidden');
-                    }, 3000);
-                } else {
-                    messageDiv.className = 'alert alert-error';
-                    messageDiv.textContent = data.detail || 'Registration failed';
-                    messageDiv.classList.remove('hidden');
-                }
-            } catch (error) {
-                messageDiv.className = 'alert alert-error';
-                messageDiv.textContent = 'Network error. Please try again.';
-                messageDiv.classList.remove('hidden');
-            }
+        // Register staff handler
+// Register staff handler
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    // Get adminUser INSIDE the event handler, not outside
+    const adminUser = JSON.parse(localStorage.getItem('adminUser'));
+    
+    const staffData = {
+        username: document.getElementById('regUsername').value,
+        email: document.getElementById('regEmail').value,
+        password: document.getElementById('regPassword').value,
+        name: document.getElementById('regName').value,
+        phone_number: document.getElementById('regPhone').value,
+        role: document.getElementById('regRole').value,
+        organization_id: adminUser?.organization_id || 1  // Use optional chaining with fallback
+    };
+    
+    console.log('Staff Data being sent:', staffData);  // Debug
+    
+    const messageDiv = document.getElementById('registerMessage');
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(staffData)
         });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.className = 'alert alert-success';
+            messageDiv.textContent = 'Staff registered successfully! They can now login.';
+            messageDiv.classList.remove('hidden');
+            document.getElementById('registerForm').reset();
+            loadStaffList();
+            loadStats();
+            
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 3000);
+        } else {
+            messageDiv.className = 'alert alert-error';
+            messageDiv.textContent = data.detail || 'Registration failed';
+            messageDiv.classList.remove('hidden');
+        }
+    } catch (error) {
+        messageDiv.className = 'alert alert-error';
+        messageDiv.textContent = 'Network error. Please try again.';
+        messageDiv.classList.remove('hidden');
+    }
+});
         
         async function loadStaffList() {
     try {
@@ -570,6 +598,73 @@ function toggleRegPassword() {
                 console.error('Error loading stats:', error);
             }
         }
+
+
+
+        async function loadPendingPatients() {
+    try {
+        const response = await fetch('/api/users/pending', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const patients = await response.json();
+        
+        const tbody = document.getElementById('pendingPatientsTable');
+        if (!patients.length) {
+            tbody.innerHTML = '<tr><td colspan="5">No pending approvals</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        patients.forEach(patient => {
+            html += `
+                <tr>
+                    <td>${patient.name || patient.username}</td>
+                    <td>${patient.email}</td>
+                    <td>${patient.phone_number || '-'}</td>
+                    <td>${patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A'}</td>
+                    <td><button class="approve-btn" onclick="approvePatient(${patient.id})">✅ Approve</button></td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading pending patients:', error);
+        document.getElementById('pendingPatientsTable').innerHTML = '<tr><td colspan="5">Error loading</td></tr>';
+    }
+}
+
+async function approvePatient(userId) {
+    if (!confirm('Approve this patient?')) return;
+    
+    try {
+        const response = await fetch(`/api/users/${userId}/approve`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        if (response.ok) {
+            alert('Patient approved successfully!');
+            loadPendingPatients();
+            loadStats();
+        } else {
+            alert('Approval failed');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
         
         async function approveStaff(userId) {
             try {
@@ -612,9 +707,12 @@ function toggleRegPassword() {
         }
         
         function showDashboard() {
-            document.getElementById('loginSection').classList.add('hidden');
-            document.getElementById('dashboardSection').classList.remove('hidden');
-        }
+    document.getElementById('loginSection').classList.add('hidden');
+    document.getElementById('dashboardSection').classList.remove('hidden');
+    loadStaffList();
+    loadStats();
+    loadPendingPatients();  // ← ADD THIS
+}
         
         function logout() {
             localStorage.removeItem('adminToken');

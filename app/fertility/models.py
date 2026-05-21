@@ -117,6 +117,7 @@ class FertilityEntry(Base):
     __tablename__ = "fertility_entries"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     
     # Patient Information
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
@@ -199,6 +200,7 @@ class FertilityProfile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), unique=True, nullable=False)
+    organization_id = Column(Integer, nullable=False, default=1)
     
     # Cycle Information
     cycle_length = Column(Integer, default=28)
@@ -246,6 +248,7 @@ class Patient(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(255), unique=True, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False, index=True)
     birth_date = Column(String(10), nullable=True)  # YYYY-MM-DD format

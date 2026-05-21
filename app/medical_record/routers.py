@@ -8,6 +8,8 @@ from datetime import datetime
 from app.utils.audit import log_audit
 from app.dependencies import get_current_user
 from app.models import User
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,14 +86,43 @@ def test_imports():
 def get_medical_records(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    org: Organization = Depends(get_current_organization),
     patient_id: Optional[str] = Query(None),
     category: Optional[str] = Query(None)
 ):
     """Get medical records - with filtering support"""
     try:
         from app.medical_record import services
-        records = services.MedicalRecordService.get_medical_records(db)
+        
+        # ← ADDED: Super admin check
+        if current_user.get('is_super_admin'):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # ← ADDED: Doctor filter
+        if current_user.get('role') == 'doctor':
+            from app.models import PatientDoctorAssignment
+            assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.get('id'),
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            assigned_patient_ids = [a[0] for a in assignments]
+            
+            if not assigned_patient_ids:
+                return {
+                    "message": "Medical records retrieved successfully",
+                    "records": [],
+                    "total_count": 0,
+                    "filtered_count": 0
+                }
+            
+            # Get records only for assigned patients
+            records = db.query(MedicalRecord).filter(
+                MedicalRecord.organization_id == org.id,
+                MedicalRecord.patient_id.in_(assigned_patient_ids)
+            ).all()
+        else:
+            records = services.MedicalRecordService.get_medical_records(db, org.id)
         
         # Apply filters if provided
         filtered_records = records
@@ -117,12 +148,12 @@ def get_medical_records(
                 "updated_at": record.updated_at.isoformat() if record.updated_at else None
             })
         
-        # ✅ AUDIT LOG
+        # ✅ AUDIT LOG (YOUR EXISTING CODE - with .get() changes)
         log_audit(
             db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_role=current_user.role.value,
+            user_id=current_user.get('id'),  # ← CHANGED
+            username=current_user.get('username'),  # ← CHANGED
+            user_role=current_user.get('role'),  # ← CHANGED
             action='READ',
             resource_type='MEDICAL_RECORDS',
             status='success',
@@ -176,7 +207,8 @@ def get_medical_record(
     record_id: str, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get specific medical record by ID"""
     try:
@@ -231,12 +263,13 @@ def create_medical_record(
     record_data: MedicalRecordCreateRequest, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create new medical record"""
     try:
         from app.medical_record import services
-        record = services.MedicalRecordService.create_medical_record(db, record_data.dict())
+        record = services.MedicalRecordService.create_medical_record(db, record_data.dict(), org.id)
         
         # ✅ AUDIT LOG
         log_audit(
@@ -268,7 +301,8 @@ def update_medical_record(
     record_data: MedicalRecordUpdateRequest, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Update medical record"""
     try:
@@ -309,7 +343,8 @@ def delete_medical_record(
     record_id: str, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Delete medical record"""
     try:
@@ -349,7 +384,8 @@ def create_lab_result(
     lab_data: LabResultRequest, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create lab result"""
     try:
@@ -403,7 +439,8 @@ def create_lab_result(
 def get_lab_results(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all lab results"""
     try:
@@ -439,7 +476,8 @@ def create_prescription(
     prescription_data: PrescriptionRequest, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create prescription"""
     try:
@@ -503,7 +541,8 @@ def create_prescription(
 def get_prescriptions(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all prescriptions"""
     try:
@@ -539,7 +578,8 @@ def get_patient_records(
     patient_id: str, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all records for a specific patient"""
     try:
@@ -577,7 +617,8 @@ def get_records_by_category(
     category: str, 
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all records for a specific category"""
     try:
@@ -608,3 +649,4 @@ def get_records_by_category(
     except Exception as e:
         logger.error(f"Error fetching category records: {e}")
         raise HTTPException(status_code=500, detail="Error fetching category records")
+

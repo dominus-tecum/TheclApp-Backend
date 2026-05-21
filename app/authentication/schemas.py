@@ -17,6 +17,8 @@ class UserRegister(BaseModel):
     # STAFF-SPECIFIC FIELDS
     specialization: Optional[str] = None
     department: Optional[str] = None
+    organization_id: int
+    doctor_id: Optional[int] = None  # ← ADD THIS
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -38,8 +40,9 @@ class UserRead(BaseModel):
     specialization: Optional[str] = None
     department: Optional[str] = None
     
-    # ✅ ADD THIS LINE - Status for approval workflow
+    # Status fields
     status: Optional[str] = "pending"  # 'pending' or 'approved'
+    is_super_admin: bool = False
 
     model_config = {
         "from_attributes": True

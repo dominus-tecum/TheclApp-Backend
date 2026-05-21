@@ -11,18 +11,6 @@ class WomensHealthStatus(str, enum.Enum):
     GOOD = "good"
 
 
-class WomensHealthIntake(Base):
-    """Questionnaire intake answers - saved once per patient"""
-    __tablename__ = "womens_health_intake"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, nullable=False, index=True)
-    completed_at = Column(DateTime, server_default=func.now())
-    answers = Column(JSON, nullable=False)  # Full questionnaire answers
-    recommendations = Column(JSON, nullable=True)  # Generated recommendations
-    confirmed_conditions = Column(JSON, nullable=True)  # User confirmed conditions
-    is_active = Column(Boolean, default=True)
-
 
 class WomensHealthEntry(Base):
     """Daily entries for women's reproductive health"""
@@ -31,6 +19,7 @@ class WomensHealthEntry(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
     patient_name = Column(String, nullable=False)
+    organization_id = Column(Integer, nullable=False, default=1)
     submission_date = Column(Date, nullable=False, index=True)
     submitted_at = Column(DateTime, server_default=func.now())
     
@@ -59,6 +48,7 @@ class WomensHealthPhoto(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     entry_id = Column(Integer, nullable=True, index=True)  # Optional: link to entry
     condition = Column(String, nullable=False)  # 'sti', 'vaginismus', etc.
     photo_url = Column(String, nullable=False)
@@ -66,3 +56,21 @@ class WomensHealthPhoto(Base):
     taken_at = Column(DateTime, server_default=func.now())
     notes = Column(Text, nullable=True)
     order_index = Column(Integer, default=0)  # For timeline ordering
+
+class WomensHealthIntake(Base):
+    """Questionnaire intake answers - saved once per patient"""
+    __tablename__ = "womens_health_intake"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
+    completed_at = Column(DateTime, server_default=func.now())
+    answers = Column(JSON, nullable=False)  # Full questionnaire answers
+    recommendations = Column(JSON, nullable=True)  # Generated recommendations
+    confirmed_conditions = Column(JSON, nullable=True)  # User confirmed conditions
+    is_active = Column(Boolean, default=True)
+    
+    # ✅ ADD THIS LINE
+    approved = Column(Boolean, default=False)  # Clinic approval status
+    approved_by = Column(Integer, nullable=True)  # Doctor ID who approved
+    approved_at = Column(DateTime, nullable=True)  # When approved    

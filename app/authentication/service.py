@@ -11,7 +11,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-def create_user(db: Session, user: UserRegister):
+def create_user(db: Session, user: UserRegister, organization_id: int):  # ← ADD organization_id parameter
     db_user = User(
         username=user.username,
         email=user.email,
@@ -26,7 +26,9 @@ def create_user(db: Session, user: UserRegister):
         
         # STAFF-SPECIFIC FIELDS
         specialization=user.specialization,
-        department=user.department
+        department=user.department,
+        
+        organization_id=organization_id  # ← ADD THIS LINE
     )
     db.add(db_user)
     db.commit()

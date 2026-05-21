@@ -36,6 +36,7 @@ from app.fertility.models import FertilityEntry, FertilityProfile
 from app.fertility.routers import router as fertility_router
 from fastapi import FastAPI, Request, Depends, HTTPException  # Add Depends, HTTPException
 from app.dependencies import get_current_user
+from app.organization.routers import router as organization_router
 from sqlalchemy.orm import Session  # Add this if missing
 from app.database import get_db
 from app.fertility.services import PatientService, FertilityProfileService
@@ -44,6 +45,7 @@ from app.fertility.routers import router as fertility_router
 from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File
 from app.health_progress.lifelong.routers import router as lifelong_router
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from app.utils.audit import log_audit
 from app.routers import router as main_router
 from app.health_progress.womens_reproductive.models import WomensHealthIntake, WomensHealthEntry, WomensHealthPhoto
@@ -549,15 +551,94 @@ from fastapi.staticfiles import StaticFiles
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/dashboard")
-async def serve_dashboard():
+async def serve_dashboard(
+    request: Request,
+    #current_user: User = Depends(get_current_user)
+):
+    db = SessionLocal()
+    log_audit(
+        db=db,
+        #user_id=current_user.id,
+        #username=current_user.username,
+        #user_role=current_user.role.value,
+        action='ACCESS',
+        resource_type='CLINIC_DASHBOARD',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    db.close()
+    
     with open("static/clinic-dashboard.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
+@app.get("/dev-dashboard")
+async def serve_developer_dashboard(request: Request):
+    # No authentication required to load the page
+    # The login happens inside the HTML via JavaScript
+    
+    # Log that the page was accessed
+    db = SessionLocal()
+    log_audit(
+        db=db,
+        user_id=None,
+        username=None,
+        user_role=None,
+        action='PAGE_ACCESS',
+        resource_type='DEV_DASHBOARD',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    db.close()
+    
+    with open("static/developer-dashboard.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
+
+
 @app.get("/admin")
-async def serve_admin_dashboard():
+async def serve_admin_dashboard(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        db = SessionLocal()
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
+            action='ACCESS_DENIED',
+            resource_type='ADMIN_DASHBOARD',
+            status='denied',
+            ip_address=request.client.host,
+            user_agent=request.headers.get('user-agent'),
+            details={"reason": "Not admin"}
+        )
+        db.close()
+        raise HTTPException(status_code=403, detail="Access denied. Admin only.")
+    
+    db = SessionLocal()
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='ACCESS',
+        resource_type='ADMIN_DASHBOARD',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    db.close()
+    
     with open("static/admin-dashboard.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
+       
 
 # Include all your existing routers (no debug prints)
 
@@ -583,6 +664,7 @@ app.include_router(urological_router, prefix="/api/health-progress", tags=["Heal
 app.include_router(lifelong_router, prefix="/api/health-progress", tags=["Health Progress"])
 app.include_router(diabetes_router, prefix="/api/health-progress/diabetes", tags=["diabetes"])
 app.include_router(hypertension_router, prefix="/api/health-progress/hypertension", tags=["hypertension"])
+app.include_router(organization_router)
 #app.include_router(skin_analysis_router, prefix="/api/skin-analysis", tags=["Skin Analysis"]) 
 app.include_router(heart_router, prefix="/api/health-progress/heart", tags=["Heart Disease"])
 app.include_router(kidney_router, prefix="/api/health-progress/kidney", tags=["Kidney Disease"])

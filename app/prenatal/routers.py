@@ -1,14 +1,16 @@
 from sqlalchemy.orm import Session
 from datetime import date
-
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 from app.database import get_db
 from app.prenatal.models import PrenatalEntry
 from app.prenatal.schemas import PrenatalCreate, PrenatalResponse, PrenatalCheckResponse
 from app.prenatal.services import PrenatalService
-from app.dependencies import get_current_user  # ← ADD THIS
-from app.models import User, PatientProfile  # ← CORRECT - Use PatientProfile
-from fastapi import APIRouter, Depends, HTTPException, Request  # ← Add Request
-from app.utils.audit import log_audit  # ← Add this
+from app.dependencies import get_current_user
+from app.models import User, PatientProfile, UserRole  # ← ADD UserRole HERE
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.utils.audit import log_audit
+
 
 router = APIRouter()
 
@@ -17,13 +19,14 @@ async def create_prenatal_entry(
     entry: PrenatalCreate,
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     if entry.patient_id != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
     print("🚨 Received prenatal entry:", entry.dict())
-    result = PrenatalService.create_prenatal_entry(db=db, entry=entry)
+    result = PrenatalService.create_prenatal_entry(db=db, entry=entry, organization_id=org.id)
     print("🚨 Entry saved with ID:", result.id)
 
            # ✅ CONVERT DATE AND DATETIME TO STRINGS FOR AUDIT LOG
@@ -57,12 +60,13 @@ async def check_existing_entry(
     date: date,
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    existing_entry = PrenatalService.check_existing_entry(db, patient_id, date)
+    existing_entry = PrenatalService.check_existing_entry(db, patient_id, date, org.id)
     
     # ✅ ADD AUDIT LOG
     log_audit(
@@ -89,7 +93,8 @@ async def get_patient_info(
     patient_id: str,
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -124,23 +129,43 @@ async def get_patient_info(
 
 @router.get("/entries")
 async def get_all_prenatal_entries(
-    request: Request,  # ← ADD THIS
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    request: Request,
+    current_user: User = Depends(get_current_user),  # ← CHANGED: User to dict
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     try:
-        entries = PrenatalService.get_all_prenatal_entries(db)
-        #entries = [e for e in entries if e.patient_id == str(current_user.id)]
+        # ← ADDED: Super admin check
+        if current_user.is_super_admin:
+            raise HTTPException(status_code=403, detail="Access denied")
         
-        # ✅ ADD AUDIT LOG
+        # ← ADDED: Doctor filter
+        if current_user.role == UserRole.DOCTOR:
+            from app.models import PatientDoctorAssignment
+            assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.id,
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            patient_ids = [a[0] for a in assignments]
+            
+            # Get entries and filter by assigned patients
+            entries = PrenatalService.get_all_prenatal_entries(db, org.id)
+            if patient_ids:
+                entries = [e for e in entries if int(e.patient_id) in patient_ids]
+            else:
+                entries = []
+        else:
+            entries = PrenatalService.get_all_prenatal_entries(db, org.id)
+        
+        # ✅ ADD AUDIT LOG (YOUR EXISTING CODE - with .get() changes)
         log_audit(
             db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_role=current_user.role.value,
+            user_id=current_user.id,  # ← CHANGED
+            username=current_user.username,  # ← CHANGED
+            user_role=current_user.role.value,  # ← CHANGED
             action='READ',
             resource_type='PRENATAL_ENTRIES',
-            patient_id=int(current_user.id),
+            patient_id=int(current_user.id),  # ← CHANGED
             status='success',
             purpose='TREATMENT',
             ip_address=request.client.host,
@@ -194,7 +219,6 @@ async def get_all_prenatal_entries(
                 "missed_medications": entry.missed_medications,
                 "additional_notes": entry.additional_notes,
                 "high_risk": entry.high_risk
-
             })
         
         return {
@@ -212,14 +236,16 @@ async def get_patient_prenatal_entries(
     patient_id: str,
     request: Request,  # ← ADD THIS
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
     try:
         entries = db.query(PrenatalEntry).filter(
-            PrenatalEntry.patient_id == patient_id
+            PrenatalEntry.patient_id == patient_id,
+            PrenatalEntry.organization_id == org.id
         ).all()
         
         # ✅ ADD AUDIT LOG
@@ -259,3 +285,45 @@ async def get_patient_prenatal_entries(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving patient entries: {str(e)}")
+
+@router.put("/patient/{patient_id}/lmp")
+async def update_patient_lmp(
+    patient_id: str,
+    lmp: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Restore the authorization check
+    if patient_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    patient = db.query(PatientProfile).filter(PatientProfile.user_id == int(patient_id)).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    from datetime import datetime, timedelta
+    lmp_date = datetime.strptime(lmp, "%Y-%m-%d")
+    edd_date = lmp_date + timedelta(days=280)
+    edd = edd_date.strftime("%Y-%m-%d")
+    
+    patient.lmp = lmp
+    patient.edd = edd
+    db.commit()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='UPDATE',
+        resource_type='PRENATAL_LMP',
+        patient_id=current_user.id,
+        status='success',
+        purpose='TREATMENT',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value={"lmp": lmp, "edd": edd}
+    )
+    
+    return {"lmp": lmp, "edd": edd} 

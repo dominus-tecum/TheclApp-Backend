@@ -87,3 +87,36 @@ async def get_current_admin(
             detail="Admin access required"
         )
     return current_user
+
+def get_visible_patient_ids(current_user: dict, db: Session):
+    """
+    Get list of patient IDs a user can see based on their role.
+    Returns:
+    - None: User can see ALL patients in their organization (Clinic Admin)
+    - []: User can see NO patients (Doctor with no assigned patients)
+    - [1,2,3]: User can see ONLY these patients (Doctor with assigned patients)
+    """
+    from app.models import PatientDoctorAssignment
+    
+    # Super admin cannot see patient data
+    if current_user.get('is_super_admin'):
+        return []
+    
+    # Clinic admin sees all patients in their organization
+    if current_user.get('role') == 'admin':
+        return None  # None means "all patients in org"
+    
+    # Doctor sees only assigned patients
+    if current_user.get('role') == 'doctor':
+        assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.end_date == None
+        ).all()
+        return [a[0] for a in assignments]  # Returns list of patient IDs, empty list if none
+    
+    # Patients see only themselves (will implement later)
+    if current_user.get('role') == 'patient':
+        return [current_user.get('id')]
+    
+    # Default: no access
+    return []    

@@ -696,12 +696,14 @@
         </div>
         
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('entries')">📋 Recent Entries</button>
-            <button class="tab" onclick="switchTab('patients')">👥 Patient Summary</button>
-        </div>
+    <button class="tab active" onclick="switchTab('entries')">📋 Recent Entries</button>
+    <button class="tab" onclick="switchTab('patients')">👥 Patient Summary</button>
+    <button class="tab" onclick="switchTab('pending')">⏳ Pending Approvals</button>
+</div>
         
         <div id="entriesContainer"></div>
         <div id="patientsContainer" style="display: none;"></div>
+        <div id="pendingContainer" style="display: none;"></div>
     </div>
     
     <!-- Photo Modal -->
@@ -2578,11 +2580,419 @@ for (const patientId of uniquePatients) {
     }
 }
 
-
     renderStats(stats);
     applyFilters();
 }
+
+
+
+
+async function loadPendingApprovals() {
+    const pendingContainer = document.getElementById('pendingContainer');
+    pendingContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading pending approvals...</div>';
+    
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    try {
+        // ========== WOMEN'S HEALTH ==========
+        const response = await fetch('/api/womens-reproductive-health/pending-users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const users = await response.json();
         
+        let html = '<div class="entries-grid">';
+        
+        for (const user of users) {
+            const intakeRes = await fetch(`/api/womens-reproductive-health/intake/active?user_id=${user.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const intakeData = await intakeRes.json();
+            
+            html += `
+                <div class="entry-card">
+                    <div class="card-header">
+                        <div class="patient-info">
+                            <h3>${escapeHtml(user.name)}</h3>
+                            <div class="patient-meta">
+                                <span>ID: ${user.id}</span>
+                                <span>Email: ${user.email || '—'}</span>
+                                <span>📅 Submitted: ${new Date(user.submitted_at).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                        <div class="badge-group">
+                            <span class="condition-badge" style="background:#fef3c7;color:#d97706;">⏳ Pending Approval</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        ${renderIntakeSummary(intakeData)}
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;">
+                            <button onclick="approvePatient(${user.id}, '${escapeHtml(user.name)}')" style="background: #2d6a4f; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                                ✅ Approve Patient
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }  // ← CLOSES WOMEN'S FOR LOOP
+        
+        // ========== MEN'S HEALTH ==========
+        const menResponse = await fetch('/api/mens-sexual-health/pending-users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const menUsers = await menResponse.json();
+        
+        for (const user of menUsers) {
+            const menIntakeRes = await fetch(`/api/mens-sexual-health/intake/active?user_id=${user.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const menIntakeData = await menIntakeRes.json();
+            
+            html += `
+                <div class="entry-card">
+                    <div class="card-header">
+                        <div class="patient-info">
+                            <h3>${escapeHtml(user.name)}</h3>
+                            <div class="patient-meta">
+                                <span>ID: ${user.id}</span>
+                                <span>Email: ${user.email || '—'}</span>
+                                <span>📅 Submitted: ${new Date(user.submitted_at).toLocaleDateString()}</span>
+                                <span>🏥 Service: Men's Health</span>
+                            </div>
+                        </div>
+                        <div class="badge-group">
+                            <span class="condition-badge" style="background:#fef3c7;color:#d97706;">⏳ Pending Approval</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        ${renderMenIntakeSummary(menIntakeData)}
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;">
+                            <button onclick="approveMenPatient(${user.id}, '${escapeHtml(user.name)}')" style="background: #2d6a4f; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                                ✅ Approve Men's Health Patient
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }  // ← CLOSES MEN'S FOR LOOP
+        
+        html += '</div>';  // ← CLOSES entries-grid div
+        
+        // ← CHECK IF ANY PENDING USERS EXIST
+        if (users.length === 0 && menUsers.length === 0) {
+            pendingContainer.innerHTML = '<div class="empty-state">✅ No pending approvals</div>';
+        } else {
+            pendingContainer.innerHTML = html;
+        }
+        
+    } catch (error) {  // ← CLOSES TRY BLOCK
+        console.error('Error loading pending approvals:', error);
+        pendingContainer.innerHTML = '<div class="empty-state">❌ Error loading pending approvals</div>';
+    }
+}  // ← CLOSES FUNCTION
+
+
+
+
+
+
+async function approveMenPatient(patientId, patientName) {
+    if (!confirm(`Approve ${patientName} for Men's Health tracking?`)) return;
+    
+    const token = localStorage.getItem('authToken');
+    
+    try {
+        const response = await fetch(`/api/mens-sexual-health/approve/${patientId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            alert(`✅ ${patientName} has been approved for Men's Health!`);
+            loadPendingApprovals();
+        } else {
+            const error = await response.json();
+            alert(`❌ Failed to approve: ${error.detail || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error approving patient:', error);
+        alert('❌ Network error. Please try again.');
+    }
+}
+
+
+function renderMenIntakeSummary(intakeData) {
+    if (!intakeData || !intakeData.has_intake) {
+        return '<div class="metric-section"><h4>📋 Questionnaire</h4><div>No questionnaire data available</div></div>';
+    }
+    
+    const answers = intakeData.answers || {};
+    const recommendedConditions = intakeData.condition_names || [];
+    
+    let html = `<div class="metric-section"><h4>📋 Questionnaire Summary</h4>
+        <div class="metric-row"><span class="metric-label">Recommended Conditions</span><span class="metric-value">${recommendedConditions.join(', ') || 'None'}</span></div>
+        <div class="metric-row"><span class="metric-label">Main Concerns</span><span class="metric-value">${answers.main_concerns?.join(', ') || 'None'}</span></div>
+        <div class="metric-row"><span class="metric-label">Impact Level</span><span class="metric-value">${answers.impact_level || '—'}/10</span></div>`;
+    
+    // Erectile Dysfunction details
+    if (answers.main_concerns?.includes('erectile_difficulty')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fef2f2; border-radius: 8px;">
+            <strong>⚠️ Erectile Dysfunction Details:</strong><br>
+            Frequency: ${answers.ed_frequency?.replace(/_/g, ' ') || 'Not specified'}<br>
+            Morning erections: ${answers.morning_erections?.replace(/_/g, ' ') || 'Not specified'}<br>
+            Duration: ${answers.ed_duration_months || '?'} months
+        </div>`;
+    }
+    
+    // Premature Ejaculation details
+    if (answers.main_concerns?.includes('premature_ejaculation')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fef3c7; border-radius: 8px;">
+            <strong>⏱️ Premature Ejaculation Details:</strong><br>
+            IELT: ${answers.ielt_minutes?.replace(/_/g, ' ') || 'Not specified'}<br>
+            Techniques tried: ${answers.pe_techniques_tried?.join(', ') || 'None'}<br>
+            Distress level: ${answers.pe_distress_level || '?'}/10
+        </div>`;
+    }
+    
+    // Low Testosterone details
+    if (answers.main_concerns?.includes('low_testosterone')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #f0fdf4; border-radius: 8px;">
+            <strong>⚡ Low Testosterone Details:</strong><br>
+            Symptoms: ${answers.low_t_symptoms?.join(', ') || 'None'}<br>
+            Tested before: ${answers.t_tested_before ? 'Yes' : 'No'}
+        </div>`;
+    }
+    
+    // Peyronie's details
+    if (answers.main_concerns?.includes('peyronies')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #e0f2fe; border-radius: 8px;">
+            <strong>📐 Peyronie's Details:</strong><br>
+            Curvature: ${answers.has_curvature?.replace(/_/g, ' ') || 'Not specified'}<br>
+            Pain: ${answers.curvature_pain?.replace(/_/g, ' ') || 'Not specified'}<br>
+            Angle: ${answers.curvature_angle_known || '?'}°
+        </div>`;
+    }
+    
+    // Performance Anxiety details
+    if (answers.main_concerns?.includes('performance_anxiety')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fdf2f8; border-radius: 8px;">
+            <strong>😰 Performance Anxiety Details:</strong><br>
+            Triggers: ${answers.anxiety_triggers?.join(', ') || 'None'}<br>
+            Avoidance behavior: ${answers.anxiety_avoidance ? 'Yes' : 'No'}
+        </div>`;
+    }
+    
+    html += `</div>`;
+    return html;
+}
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderIntakeSummary(intakeData) {
+    console.log('🔍 intakeData:', intakeData);
+    
+    if (!intakeData || !intakeData.has_intake) {
+        return '<div class="metric-section"><h4>📋 Questionnaire</h4><div>No questionnaire data available</div></div>';
+    }
+    
+    const conditionNames = intakeData.condition_names || [];
+    const answers = intakeData.answers || {};
+    
+    let html = `<div class="metric-section"><h4>📋 Questionnaire Summary</h4>
+        <div class="metric-row"><span class="metric-label">Recommended Conditions</span><span class="metric-value">${conditionNames.join(', ') || 'None'}</span></div>
+        <div class="metric-row"><span class="metric-label">Main Concerns</span><span class="metric-value">${answers.main_concerns?.join(', ') || 'None'}</span></div>`;
+    
+    // STI / Skin Changes details
+    if (answers.main_concerns?.includes('skin_changes')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fef3c7; border-radius: 8px;">
+            <strong>⚠️ STI / Skin Changes Details:</strong><br>
+            Lesion appearance: ${answers.lesion_appearance?.join(', ') || 'Not specified'}<br>
+            Symptoms: ${answers.sti_symptoms?.join(', ') || 'Not specified'}<br>
+            First noticed: ${answers.first_noticed_days ? answers.first_noticed_days + ' days ago' : 'Not specified'}<br>
+            New partner in last 3 months: ${answers.new_partner_last_3months ? 'Yes' : 'No'}<br>
+            Had this before: ${answers.previous_occurrence ? 'Yes' : 'No'}
+        </div>`;
+    }
+    
+    // Endometriosis details
+    if (answers.main_concerns?.includes('painful_periods')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fef2f2; border-radius: 8px;">
+            <strong>🩸 Period Pain Details:</strong><br>
+            Pain level: ${answers.endometriosis_pain_level || '?'}/10<br>
+            Pain between periods: ${answers.pain_between_periods ? 'Yes' : 'No'}<br>
+            Pain with bowel movements: ${answers.bowel_pain ? 'Yes' : 'No'}<br>
+            Pain with urination: ${answers.bladder_pain ? 'Yes' : 'No'}<br>
+            Pain duration: ${answers.pain_duration_months || '?'} months<br>
+            Missed work days: ${answers.missed_work_days || '0'} days in last 6 months
+        </div>`;
+    }
+    
+    // Menopause details
+    if (answers.main_concerns?.includes('hot_flashes')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fef3c7; border-radius: 8px;">
+            <strong>🌡️ Menopause Details:</strong><br>
+            Age: ${answers.age?.replace('_', '-') || 'Not specified'}<br>
+            Period status: ${answers.period_status?.replace('_', ' ') || 'Not specified'}<br>
+            Hot flash frequency: ${answers.hot_flash_frequency || 'Not specified'}<br>
+            Other symptoms: ${answers.other_menopause_symptoms?.join(', ') || 'None'}
+        </div>`;
+    }
+    
+    // PCOS details
+    if (answers.main_concerns?.includes('irregular_periods')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #f0fdf4; border-radius: 8px;">
+            <strong>⚖️ PCOS Details:</strong><br>
+            Cycle frequency: ${answers.cycle_frequency?.replace('_', ' ') || 'Not specified'}<br>
+            Jawline acne: ${answers.jawline_acne ? 'Yes' : 'No'}<br>
+            Facial hair: ${answers.facial_hair ? 'Yes' : 'No'}<br>
+            Body hair: ${answers.body_hair ? 'Yes' : 'No'}<br>
+            Scalp hair thinning: ${answers.scalp_hair_thinning ? 'Yes' : 'No'}<br>
+            Difficulty losing weight: ${answers.weight_difficulty ? 'Yes' : 'No'}
+        </div>`;
+    }
+    
+    // Vaginismus details
+    if (answers.main_concerns?.includes('pain_with_sex')) {
+        html += `<div style="margin-top: 12px; padding: 8px; background: #fdf2f8; border-radius: 8px;">
+            <strong>🌸 Pain with Sex Details:</strong><br>
+            Finger pain: ${answers.finger_pain || 'Not specified'}<br>
+            Pain only with certain partners: ${answers.pain_only_with_partner || 'Not specified'}<br>
+            Pain sensation: ${answers.pain_sensation?.join(', ') || 'Not specified'}
+        </div>`;
+    }
+    
+    html += `</div>`;
+    return html;
+}
+
+function renderEntriesSummary(entries) {
+    const recentEntries = entries.slice(-5); // Last 5 entries
+    let html = `<div class="metric-section"><h4>📊 Recent Entries (${entries.length} total)</h4>`;
+    
+    for (const entry of recentEntries) {
+        html += `
+            <details style="margin-bottom: 12px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px;">
+                <summary style="cursor: pointer; font-weight: 600;">📅 ${entry.submission_date} - Status: ${entry.status}</summary>
+                <div style="margin-top: 8px; padding-left: 12px;">
+                    <div><strong>Conditions tracked:</strong> ${entry.conditions_selected?.join(', ') || 'None'}</div>
+                    ${renderConditionDataSummary(entry.condition_data)}
+                </div>
+            </details>
+        `;
+    }
+    
+    html += `</div>`;
+    return html;
+}
+
+function renderConditionDataSummary(conditionData) {
+    if (!conditionData) return '<div>No condition data</div>';
+    
+    let html = '<div style="margin-top: 8px;">';
+    
+    // Vaginismus
+    if (conditionData.vaginismus) {
+        const vag = conditionData.vaginismus;
+        html += `<div><strong>🌸 Vaginismus:</strong> Pain: ${vag.painDuringInsertion || '—'}/10, Dilator: ${vag.dilatorSize || '—'}/6</div>`;
+    }
+    
+    // Endometriosis
+    if (conditionData.endometriosis) {
+        const endo = conditionData.endometriosis;
+        html += `<div><strong>🩸 Endometriosis:</strong> Pain: ${endo.painLevel || '—'}/10, Missed work: ${endo.missedWork ? 'Yes' : 'No'}</div>`;
+    }
+    
+    // Menopause
+    if (conditionData.menopause) {
+        const meno = conditionData.menopause;
+        html += `<div><strong>🌡️ Menopause:</strong> Hot flashes: ${meno.hotFlashCount || '—'}/day, Severity: ${meno.hotFlashSeverity || '—'}/10</div>`;
+    }
+    
+    // PCOS
+    if (conditionData.pcos) {
+        const pcos = conditionData.pcos;
+        html += `<div><strong>⚖️ PCOS:</strong> Acne: ${pcos.acneSeverity || '—'}/10, Facial hair: ${pcos.facialHairSeverity || '—'}/10</div>`;
+    }
+    
+    // STI
+    if (conditionData.sti) {
+        const sti = conditionData.sti;
+        html += `<div><strong>⚠️ STI:</strong> Symptoms: ${sti.symptoms?.join(', ') || 'None'}</div>`;
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+async function approvePatient(patientId, patientName) {
+    if (!confirm(`Approve ${patientName} for Women's Health tracking?`)) return;
+    
+    const token = localStorage.getItem('authToken');
+    
+    try {
+        const response = await fetch(`/api/womens-reproductive-health/approve/${patientId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            alert(`✅ ${patientName} has been approved!`);
+            loadPendingApprovals(); // Refresh the list
+        } else {
+            const error = await response.json();
+            alert(`❌ Failed to approve: ${error.detail || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error approving patient:', error);
+        alert('❌ Network error. Please try again.');
+    }
+}
+
+
+
+
+       
+        
+
+
+
+
+
 
         function renderStats(stats) {
             document.getElementById('statsGrid').innerHTML = `
@@ -2737,19 +3147,29 @@ function closeRegisterModal() {
 
 
         function switchTab(tab) {
-            currentTab = tab;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            if (tab === 'entries') {
-                document.querySelectorAll('.tab')[0].classList.add('active');
-                document.getElementById('entriesContainer').style.display = 'block';
-                document.getElementById('patientsContainer').style.display = 'none';
-            } else {
-                document.querySelectorAll('.tab')[1].classList.add('active');
-                document.getElementById('entriesContainer').style.display = 'none';
-                document.getElementById('patientsContainer').style.display = 'block';
-            }
-            applyFilters();
-        }
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    
+    if (tab === 'entries') {
+        document.querySelectorAll('.tab')[0].classList.add('active');
+        document.getElementById('entriesContainer').style.display = 'block';
+        document.getElementById('patientsContainer').style.display = 'none';
+        document.getElementById('pendingContainer').style.display = 'none';
+    } else if (tab === 'patients') {
+        document.querySelectorAll('.tab')[1].classList.add('active');
+        document.getElementById('entriesContainer').style.display = 'none';
+        document.getElementById('patientsContainer').style.display = 'block';
+        document.getElementById('pendingContainer').style.display = 'none';
+    } else if (tab === 'pending') {
+        document.querySelectorAll('.tab')[2].classList.add('active');
+        document.getElementById('entriesContainer').style.display = 'none';
+        document.getElementById('patientsContainer').style.display = 'none';
+        document.getElementById('pendingContainer').style.display = 'block';
+        loadPendingApprovals();
+    }
+    
+    applyFilters();
+}
         
         document.getElementById('conditionFilter').addEventListener('change', applyFilters);
         document.getElementById('searchInput').addEventListener('input', applyFilters);
@@ -2757,5 +3177,10 @@ function closeRegisterModal() {
         document.getElementById('statusFilter').addEventListener('change', applyFilters);
         loadAllData();
     </script>
+
+
+
+
+
 </body>
 </html>

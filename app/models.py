@@ -4,6 +4,7 @@ import enum
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum, Boolean, JSON, Text
 
+
 # Define allowed roles
 class UserRole(enum.Enum):
     PATIENT = "patient"
@@ -18,6 +19,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.PATIENT, nullable=False)
+    organization = relationship("Organization", backref="users")
     
     # COMMON FIELDS FOR ALL USERS
     name = Column(String, nullable=True)
@@ -33,12 +35,16 @@ class User(Base):
     department = Column(String, nullable=True)
     
     is_active = Column(Boolean, default=True)
+    is_super_admin = Column(Boolean, default=False)
+
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, default=1)
+    organization = relationship("Organization", backref="users")
 
         
     # ✅ ADD THIS LINE - Status for approval workflow
     status = Column(String, default='pending')  # 'pending' or 'approved'
     profile_image = Column(String, nullable=True)
-    
+    created_at = Column(DateTime, default=datetime.utcnow)
        
     # EXISTING relationships
     prescriptions = relationship(
@@ -226,3 +232,23 @@ class OneTimeToken(Base):
     used_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    license_number = Column(String(100), unique=True, nullable=True)
+    address = Column(Text, nullable=True)
+    phone = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=True)
+    subscription_plan = Column(String(50), default='basic')
+    subscription_status = Column(String(50), default='trial')
+    trial_ends_at = Column(DateTime, nullable=True)
+    subscription_ends_at = Column(DateTime, nullable=True)
+    max_staff = Column(Integer, default=10)
+    max_patients = Column(Integer, default=500)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    is_active = Column(Boolean, default=True)
+    allowed_modules = Column(JSON, default=list)  # ← ADD THIS

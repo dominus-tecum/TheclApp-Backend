@@ -6,12 +6,13 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 from .authentication.auth import get_current_user
-from app.models import User, UserRole
-from app.models import PatientDoctorAssignment
+from app.models import User, UserRole, PatientDoctorAssignment, Organization, AuditLog
 from app.utils.audit import log_audit
+from app.database import get_db
+import os
 
-
-
+router = APIRouter(dependencies=[])        #router = APIRouter()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ========== MEDICAL RECORD SCHEMAS ==========
 
@@ -42,13 +43,10 @@ class MedicalRecordResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-
-router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# ========== USER REGISTRATION ==========
 
 @router.post("/users/", response_model=schemas.UserOut)
-def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def register(user: schemas.UserCreate, request: Request, db: Session = Depends(database.get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -62,10 +60,23 @@ def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    log_audit(
+        db=db,
+        user_id=None,
+        username=user.username,
+        user_role="PATIENT",
+        action='REGISTER',
+        resource_type='USER',
+        resource_id=new_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+
     return new_user
 
-
-    # ========== MEDICAL RECORD ENDPOINTS ==========
+# ========== MEDICAL RECORD ENDPOINTS ==========
 
 @router.get("/patients/search")
 def search_patients(
@@ -73,7 +84,7 @@ def search_patients(
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = db.query(models.User).filter(models.User.role == models.UserRole.PATIENT)
+    query = db.query(models.User).filter(models.User.role == UserRole.PATIENT)
     
     if q and len(q) >= 2:
         query = query.filter(
@@ -98,6 +109,7 @@ def search_patients(
 @router.post("/medical-records", response_model=MedicalRecordResponse, status_code=201)
 def create_medical_record(
     record: MedicalRecordCreate,
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -126,12 +138,27 @@ def create_medical_record(
     db.add(db_record)
     db.commit()
     db.refresh(db_record)
+
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='CREATE',
+        resource_type='MEDICAL_RECORD',
+        resource_id=db_record.id,
+        patient_id=record.patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return db_record
 
 @router.get("/medical-records/patient/{patient_id}")
 def get_patient_medical_records(
     patient_id: int,
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -142,6 +169,19 @@ def get_patient_medical_records(
     records = db.query(models.MedicalRecord).filter(
         models.MedicalRecord.patient_id == patient_id
     ).order_by(models.MedicalRecord.record_date.desc()).all()
+
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='MEDICAL_RECORD',
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {
         "patient": {
@@ -156,6 +196,7 @@ def get_patient_medical_records(
 @router.delete("/medical-records/{record_id}")
 def delete_medical_record(
     record_id: int,
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -163,18 +204,44 @@ def delete_medical_record(
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     
+    deleted_patient_id = record.patient_id
+    deleted_record_type = record.record_type
+    deleted_title = record.title
+    
     db.delete(record)
     db.commit()
+
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='DELETE',
+        resource_type='MEDICAL_RECORD',
+        resource_id=record_id,
+        patient_id=deleted_patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {"message": "Record deleted successfully"}
 
 @router.get("/doctors/search")
 def search_doctors(
     q: str = "",
+    organization_id: int = None,
+    request: Request = None,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
     query = db.query(models.User).filter(models.User.role == UserRole.DOCTOR)
+    
+    # Filter by organization if provided
+    if organization_id:
+        query = query.filter(models.User.organization_id == organization_id)
+    elif current_user.get('organization_id'):
+        query = query.filter(models.User.organization_id == current_user.get('organization_id'))
     
     if q and len(q) >= 2:
         query = query.filter(
@@ -183,6 +250,24 @@ def search_doctors(
         )
     
     doctors = query.all()
+    
+    # ✅ AUDIT LOG
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='DOCTORS_SEARCH',
+        status='success',
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get('user-agent') if request else None,
+        new_value={
+            "search_term": q,
+            "organization_id": organization_id or current_user.get('organization_id'),
+            "results_count": len(doctors)
+        }
+    )
     
     return {
         "doctors": [
@@ -201,8 +286,6 @@ def search_doctors(
             for d in doctors
         ]
     }
-
-
 
 @router.get("/patients/{patient_id}/current-doctor")
 def get_patient_current_doctor(
@@ -233,11 +316,11 @@ def get_patient_current_doctor(
 def assign_doctor_to_patient(
     patient_id: int,
     doctor_id: int,
+    request: Request,
     reason: str = None,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # End current assignment
     current = db.query(PatientDoctorAssignment).filter(
         PatientDoctorAssignment.patient_id == patient_id,
         PatientDoctorAssignment.end_date == None
@@ -246,7 +329,9 @@ def assign_doctor_to_patient(
     if current:
         current.end_date = datetime.now()
     
-    # Create new assignment
+    doctor = db.query(User).filter(User.id == doctor_id).first()
+    patient = db.query(User).filter(User.id == patient_id).first()
+    
     new_assignment = PatientDoctorAssignment(
         patient_id=patient_id,
         doctor_id=doctor_id,
@@ -256,9 +341,22 @@ def assign_doctor_to_patient(
     
     db.add(new_assignment)
     db.commit()
+
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='ASSIGN',
+        resource_type='DOCTOR_ASSIGNMENT',
+        resource_id=new_assignment.id,
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {"message": "Doctor assigned successfully"}
-
 
 @router.get("/doctors/{doctor_id}")
 def get_doctor_details(
@@ -293,25 +391,22 @@ def get_doctor_details(
 @router.post("/doctors/profile")
 def create_doctor_profile(
     doctor_data: dict,
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # Admin only
     if current_user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
-    # Check if email exists
     existing = db.query(models.User).filter(models.User.email == doctor_data.get('email')).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Auto-generate username and password
     email = doctor_data.get('email')
     username = email.split('@')[0]
     password = "Doctor@2024"
     hashed_password = pwd_context.hash(password)
     
-    # Create user
     new_user = models.User(
         username=username,
         email=email,
@@ -325,7 +420,6 @@ def create_doctor_profile(
         status='approved'
     )
     
-    # Add extra fields
     if doctor_data.get('experience_years'):
         new_user.experience_years = doctor_data.get('experience_years')
     if doctor_data.get('education'):
@@ -336,6 +430,19 @@ def create_doctor_profile(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='CREATE',
+        resource_type='DOCTOR',
+        resource_id=new_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {"message": "Doctor created successfully", "id": new_user.id}
 
@@ -343,45 +450,46 @@ def create_doctor_profile(
 def update_user(
     user_id: int,
     user_data: dict,
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    print("\n" + "!" * 50)
-    print("UPDATE_USER IS BEING CALLED!")
-    print(f"User ID: {user_id}")
-    print(f"Data: {user_data}")
-    print("!" * 50 + "\n")
-    
-    # Check if admin
     if current_user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
-    # Get the user from database
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Update the fields
     allowed_fields = ['name', 'email', 'phone_number', 'specialization', 'department', 
                       'description', 'education', 'experience_years', 'is_active']
     
     for field in allowed_fields:
         if field in user_data:
-            print(f"Updating {field} to: {user_data[field]}")
             setattr(user, field, user_data[field])
     
-    # Commit to database
     db.commit()
     db.refresh(user)
     
-    print(f"After update - specialization: {user.specialization}, department: {user.department}")
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='UPDATE',
+        resource_type='USER',
+        resource_id=user_id,
+        patient_id=user_id if user.role == UserRole.PATIENT else None,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return user
 
-    # ========== ADMIN MANAGEMENT ENDPOINTS WITH AUDIT LOGS ==========
-import os
-from pydantic import BaseModel
+# ========== ADMIN MANAGEMENT ENDPOINTS ==========
 
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "change-this-in-production")
 
 class AdminCreateRequest(BaseModel):
     email: str = "admin@theclapp.com"
@@ -394,17 +502,12 @@ class AdminRemoveRequest(BaseModel):
     email: str = "admin@theclapp.com"
     secret_key: str
 
-ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "change-this-in-production")
-
 @router.post("/admin/create", status_code=201)
 def create_admin_endpoint(
     admin_data: AdminCreateRequest,
     request: Request,
     db: Session = Depends(database.get_db)
 ):
-    """Create admin user using one-time token"""
-    
-    # Simple validation - just check token is not empty
     if not admin_data.one_time_token:
         log_audit(
             db=db,
@@ -419,7 +522,6 @@ def create_admin_endpoint(
         )
         raise HTTPException(status_code=403, detail="Invalid token")
     
-    # Check if admin already exists
     existing_admin = db.query(models.User).filter(
         models.User.email == admin_data.email
     ).first()
@@ -438,10 +540,8 @@ def create_admin_endpoint(
         )
         raise HTTPException(status_code=400, detail="Admin already exists")
     
-    # Hash password
     hashed_password = pwd_context.hash(admin_data.password)
     
-    # Create new admin user
     new_admin = models.User(
         username=admin_data.username,
         name=admin_data.name,
@@ -456,7 +556,6 @@ def create_admin_endpoint(
     db.commit()
     db.refresh(new_admin)
     
-    # Log successful admin creation
     log_audit(
         db=db,
         user_id=None,
@@ -478,16 +577,12 @@ def create_admin_endpoint(
         "role": new_admin.role.value if hasattr(new_admin.role, 'value') else str(new_admin.role)
     }
 
-
 @router.delete("/admin/remove")
 def remove_admin_endpoint(
     admin_data: AdminRemoveRequest,
-    request: Request,  # ← Add for IP/user-agent
+    request: Request,
     db: Session = Depends(database.get_db)
 ):
-    """Remove admin user with audit logging"""
-    
-    # Verify secret key
     if admin_data.secret_key != ADMIN_SECRET_KEY:
         log_audit(
             db=db,
@@ -497,13 +592,11 @@ def remove_admin_endpoint(
             action='ADMIN_REMOVE_FAILED',
             resource_type='ADMIN',
             status='denied',
-            details={"reason": "Invalid secret key", "email": admin_data.email},
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
         )
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
-    # Find admin
     admin = db.query(models.User).filter(
         models.User.email == admin_data.email,
         models.User.role == models.UserRole.ADMIN
@@ -518,13 +611,11 @@ def remove_admin_endpoint(
             action='ADMIN_REMOVE_FAILED',
             resource_type='ADMIN',
             status='denied',
-            details={"reason": "Admin not found", "email": admin_data.email},
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
         )
         raise HTTPException(status_code=404, detail="Admin not found")
     
-    # Prevent removing the last admin
     admin_count = db.query(models.User).filter(
         models.User.role == models.UserRole.ADMIN
     ).count()
@@ -539,13 +630,11 @@ def remove_admin_endpoint(
             resource_type='ADMIN',
             resource_id=admin.id,
             status='denied',
-            details={"reason": "Cannot remove last admin", "email": admin_data.email},
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
         )
         raise HTTPException(status_code=400, detail="Cannot remove the last admin")
     
-    # Store admin info before deletion for audit
     deleted_admin_email = admin.email
     deleted_admin_username = admin.username
     deleted_admin_id = admin.id
@@ -553,7 +642,6 @@ def remove_admin_endpoint(
     db.delete(admin)
     db.commit()
     
-    # ✅ LOG SUCCESSFUL ADMIN REMOVAL
     log_audit(
         db=db,
         user_id=None,
@@ -563,11 +651,6 @@ def remove_admin_endpoint(
         resource_type='ADMIN',
         resource_id=deleted_admin_id,
         status='success',
-        details={
-            "removed_admin_email": deleted_admin_email,
-            "removed_admin_username": deleted_admin_username,
-            "remaining_admin_count": admin_count - 1
-        },
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
         purpose="ADMIN_MANAGEMENT"
@@ -596,22 +679,32 @@ def get_admin_info_endpoint(
         "role": admin.role.value if hasattr(admin.role, 'value') else str(admin.role),
         "status": admin.status,
         "is_active": admin.is_active
-        # Remove 'created_at' if it causes errors
     }
 
 @router.get("/admin/list")
 def list_all_admins(
     secret_key: str,
+    request: Request,
     db: Session = Depends(database.get_db)
 ):
-    """List all admin users (requires secret key)"""
-    
     if secret_key != ADMIN_SECRET_KEY:
         raise HTTPException(status_code=403, detail="Invalid secret key")
     
     admins = db.query(models.User).filter(
         models.User.role == models.UserRole.ADMIN
     ).all()
+
+    log_audit(
+        db=db,
+        user_id=None,
+        username="system",
+        user_role="SYSTEM",
+        action='READ',
+        resource_type='ADMIN',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {
         "admins": [
@@ -628,3 +721,307 @@ def list_all_admins(
         ],
         "total": len(admins)
     }
+
+# ========== SUPER ADMIN ENDPOINTS ==========
+
+@router.get("/admin/stats")
+async def get_system_stats(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    stats = {
+        "organizations": db.query(Organization).count(),
+        "total_users": db.query(User).count(),
+        "pending_users": db.query(User).filter(User.status == 'pending').count(),
+        "clinic_admins": db.query(User).filter(User.role == UserRole.ADMIN, User.is_super_admin == False).count(),
+        "doctors": db.query(User).filter(User.role == UserRole.DOCTOR).count(),
+        "patients": db.query(User).filter(User.role == UserRole.PATIENT).count()
+    }
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='SYSTEM_STATS',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return stats
+
+@router.get("/admin/all-users")
+async def get_all_users_admin(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    users = db.query(User).all()
+    result = []
+    for user in users:
+        org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+        result.append({
+            "id": user.id,
+            "name": user.name,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
+            "status": user.status,
+            "organization_id": user.organization_id,
+            "organization_name": org.name if org else None
+        })
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='ALL_USERS',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return result
+
+@router.get("/admin/clinic-admins")
+async def get_clinic_admins(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    admins = db.query(User).filter(User.role == UserRole.ADMIN, User.is_super_admin == False).all()
+    result = []
+    for admin in admins:
+        org = db.query(Organization).filter(Organization.id == admin.organization_id).first()
+        result.append({
+            "id": admin.id,
+            "name": admin.name,
+            "username": admin.username,
+            "email": admin.email,
+            "status": admin.status,
+            "organization_id": admin.organization_id,
+            "organization_name": org.name if org else None
+        })
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='CLINIC_ADMINS',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return result
+
+@router.post("/admin/create-clinic-admin")
+async def create_clinic_admin(
+    data: dict,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    existing = db.query(User).filter(User.email == data.get('email')).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = pwd_context.hash(data.get('password', 'Admin123!'))
+    
+    new_admin = User(
+        username=data.get('username'),
+        email=data.get('email'),
+        password_hash=hashed_password,
+        name=data.get('name'),
+        role=UserRole.ADMIN,
+        organization_id=data.get('organization_id'),
+        status='approved',
+        is_super_admin=False
+    )
+    
+    db.add(new_admin)
+    db.commit()
+    db.refresh(new_admin)
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='CREATE',
+        resource_type='CLINIC_ADMIN',
+        resource_id=new_admin.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {"message": "Clinic admin created", "id": new_admin.id}
+
+@router.put("/admin/reset-password/{user_id}")
+async def reset_user_password(
+    user_id: int,
+    data: dict,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.password_hash = pwd_context.hash(data.get('password', 'Admin123!'))
+    db.commit()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='UPDATE',
+        resource_type='USER_PASSWORD',
+        resource_id=user_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {"message": "Password reset successfully"}
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user_by_admin(
+    user_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.id == current_user.get('id'):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    deleted_email = user.email
+    deleted_name = user.name
+    
+    db.delete(user)
+    db.commit()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='DELETE',
+        resource_type='USER',
+        resource_id=user_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {"message": "User deleted"}
+
+@router.get("/admin/audit-logs")
+async def get_audit_logs(
+    limit: int = 100,
+    user: str = None,
+    action: str = None,
+    request: Request = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    query = db.query(AuditLog)
+    if user:
+        query = query.filter(AuditLog.username.ilike(f"%{user}%"))
+    if action:
+        query = query.filter(AuditLog.action == action)
+    
+    logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.get('id'),
+        username=current_user.get('username'),
+        user_role=current_user.get('role'),
+        action='READ',
+        resource_type='AUDIT_LOGS',
+        status='success',
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get('user-agent') if request else None
+    )
+    
+    return logs
+
+@router.get("/doctors/by-organization")
+def get_doctors_by_organization(
+    organization_id: int,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    skip_auth: bool = True
+):
+    print(f"🔍 ENDPOINT REACHED! organization_id={organization_id}")
+    """Get all active doctors in an organization (no auth required for registration)"""
+    doctors = db.query(User).filter(
+        User.role == UserRole.DOCTOR,
+        User.organization_id == organization_id,
+        User.is_active == True,
+        User.status == 'approved'
+    ).all()
+    
+    # ✅ AUDIT LOG
+    log_audit(
+        db=db,
+        user_id=None,
+        username=None,
+        user_role=None,
+        action='READ',
+        resource_type='DOCTORS_LIST',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        details={"organization_id": organization_id, "doctors_count": len(doctors)}
+    )
+    
+    return {
+        "doctors": [
+            {
+                "id": d.id,
+                "name": d.name,
+                "specialization": d.specialization,
+                "department": d.department,
+                "experience_years": d.experience_years,
+                "profile_image": d.profile_image
+            }
+            for d in doctors
+        ]
+    }    

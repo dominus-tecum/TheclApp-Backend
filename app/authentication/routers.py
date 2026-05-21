@@ -2,13 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.models import User, PatientProfile
+from app.models import User, PatientProfile, Organization, PatientDoctorAssignment, UserRole
 from .schemas import UserRegister, UserLogin, UserRead
-from .service import create_user, authenticate_user
-from .auth import create_access_token, get_current_user
+from .service import create_user 
+from .auth import create_access_token, get_current_user, authenticate_user
 from jose import jwt
 from app.core.config import settings  # ✅ IMPORT SETTINGS
 from app.utils.audit import log_audit
+
 
 
 router = APIRouter(tags=["Authentication"])
@@ -43,7 +44,18 @@ def create_refresh_token(username: str, user_id: int):
 
 
 @router.post("/register", response_model=UserRead)
-def register(user: UserRegister, db: Session = Depends(get_db)):
+def register(user: UserRegister, request: Request, db: Session = Depends(get_db)):
+    print(f"🔍 REGISTER - Full received data: {user.dict()}")
+    print(f"🔍 REGISTER - organization_id: {user.organization_id}")
+    print("=" * 50)
+    print("🔍 REGISTER - Received data:")
+    print(f"   username: {user.username}")
+    print(f"   email: {user.email}")
+    print(f"   organization_id: {user.organization_id}")
+    print(f"   organization_id type: {type(user.organization_id)}")
+    print("=" * 50)
+
+
     print(f"🔍 REGISTER - Received: {user.dict()}")
     
     existing_email = db.query(User).filter(User.email == user.email).first()
@@ -56,12 +68,17 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
         print("❌ REGISTER - Username already taken")
         raise HTTPException(status_code=400, detail="Username already taken")
 
-    created_user = create_user(db, user)
+    # Verify organization exists
+    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=400, detail="Invalid organization")
+
+    created_user = create_user(db, user, user.organization_id)
     print(f"✅ REGISTER - User created: {created_user.id}, {created_user.email}, {created_user.username}")
     created_user.status = 'pending'
     db.commit()
     
-    # ✅ CREATE PATIENT PROFILE - THIS IS MISSING
+    # CREATE PATIENT PROFILE
     existing_patient = db.query(PatientProfile).filter(PatientProfile.user_id == created_user.id).first()
     if not existing_patient:
         new_patient = PatientProfile(
@@ -79,6 +96,63 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
         print(f"✅ Patient profile created with ID: {new_patient.id}")
     else:
         print(f"⚠️ Patient profile already exists: {existing_patient.id}")
+
+    # ========== DOCTOR ASSIGNMENT BLOCK - CORRECTED ==========
+    # Assign patient to selected doctor (if doctor_id provided)
+    if user.doctor_id:
+        print(f"🔍 Attempting to assign patient to doctor_id: {user.doctor_id}")
+        
+        # Verify doctor exists and belongs to same organization
+        doctor = db.query(User).filter(
+            User.id == user.doctor_id,
+            User.role == UserRole.DOCTOR,
+            User.organization_id == user.organization_id
+        ).first()
+        
+        if doctor:
+            # Create the assignment record
+            assignment = PatientDoctorAssignment(
+                patient_id=created_user.id,
+                doctor_id=user.doctor_id,
+                assigned_date=datetime.now(),
+                reason="Patient selected during registration"
+            )
+            db.add(assignment)
+            db.commit()
+            print(f"✅ Patient assigned to doctor ID: {user.doctor_id} (Dr. {doctor.name})")
+            
+            # Audit log for doctor assignment
+            log_audit(
+                db=db,
+                user_id=created_user.id,
+                username=created_user.username,
+                user_role=created_user.role.value,
+                action='ASSIGN',
+                resource_type='DOCTOR_ASSIGNMENT',
+                patient_id=created_user.id,
+                status='success',
+                ip_address=request.client.host,
+                user_agent=request.headers.get('user-agent'),
+                new_value={"doctor_id": user.doctor_id, "reason": "Patient selected during registration"}
+            )
+        else:
+            print(f"⚠️ Doctor ID {user.doctor_id} not found or invalid (not a doctor or wrong organization)")
+    # ========== END OF DOCTOR ASSIGNMENT BLOCK ==========
+
+    # Audit log for registration
+    log_audit(
+        db=db,
+        user_id=created_user.id,
+        username=created_user.username,
+        user_role=created_user.role.value,
+        action='REGISTER',
+        resource_type='USER',
+        resource_id=created_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value={"organization_id": user.organization_id, "doctor_id": user.doctor_id if user.doctor_id else None}
+    )
     
     return created_user
 
@@ -205,7 +279,8 @@ def login(
             "role": authenticated_user.role,
             "name": authenticated_user.name,
             "phone_number": authenticated_user.phone_number,
-            "status": authenticated_user.status
+            "status": authenticated_user.status,
+            "organization_id": authenticated_user.organization_id
         }
     }
     
@@ -282,15 +357,36 @@ async def refresh_token(refresh_token: str = Body(..., embed=True)):
     }
 
 @router.get("/me", response_model=UserRead)
-def get_current_user_info(current_user: User = Depends(get_current_user)):
-    return current_user
-
-@router.get("/{user_id}", response_model=UserRead)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+def get_current_user_info(
+    request: Request,
+    current_user: dict = Depends(get_current_user),  # ← CHANGE User to dict
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == current_user.get('id')).first()  # ← use .get('id')
+    
+    # ✅ AUDIT LOG
+    log_audit(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        user_role=user.role.value if hasattr(user.role, 'value') else str(user.role),
+        action='READ',
+        resource_type='USER_PROFILE',
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
+        "name": user.name,
+        "phone_number": user.phone_number,
+        "status": user.status,
+        "is_super_admin": getattr(user, 'is_super_admin', False)
+    }
 
 
 from pydantic import BaseModel

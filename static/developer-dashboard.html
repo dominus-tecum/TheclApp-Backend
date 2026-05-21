@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Dashboard - TheClapp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #0f2b3d 0%, #1a3a4f 100%);
+            color: white;
+            padding: 20px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 12px; }
+        .logout-btn {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .main-container { max-width: 1400px; margin: 0 auto; padding: 32px; }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            font-size: 20px;
+            color: #1a2a3a;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: white;
+            padding: 8px;
+            border-radius: 16px;
+        }
+        .tab {
+            padding: 12px 24px;
+            background: #f1f5f9;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .tab.active {
+            background: #2d6a4f;
+            color: white;
+        }
+        .form-group { margin-bottom: 16px; }
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+        }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        button {
+            background: #2d6a4f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #1b4d3e; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-secondary { background: #64748b; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; font-weight: 600; color: #0f2b3d; }
+        .alert {
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        .alert-success { background: #dcfce7; color: #16a34a; border: 1px solid #16a34a; }
+        .alert-error { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
+        .hidden { display: none; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+        }
+        .stat-number { font-size: 32px; font-weight: 800; color: #2d6a4f; }
+        .stat-label { font-size: 14px; color: #64748b; margin-top: 8px; }
+        .module-checkbox {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            margin: 4px;
+        }
+        .module-checkbox input { width: auto; margin: 0; }
+        .modules-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .action-buttons { display: flex; gap: 8px; }
+        .edit-btn { background: #3b82f6; padding: 4px 12px; font-size: 12px; }
+        .delete-btn { background: #dc2626; padding: 4px 12px; font-size: 12px; }
+        .reset-btn { background: #f59e0b; padding: 4px 12px; font-size: 12px; }
+        .login-section { max-width: 450px; margin: 100px auto; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Login Section -->
+        <div id="loginSection" class="login-section">
+            <div class="card">
+                <h2 style="text-align: center;">🔐 Super Admin Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" style="width: 100%;">Login</button>
+                </form>
+                <div id="loginError" class="alert alert-error hidden" style="margin-top: 16px;"></div>
+            </div>
+        </div>
+
+        <!-- Super Admin Dashboard -->
+        <div id="dashboardSection" class="hidden">
+            <div class="header">
+                <h1>🛠️ Super Admin Dashboard</h1>
+                <button class="logout-btn" onclick="logout()">🔓 Logout</button>
+            </div>
+
+            <div class="main-container">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('stats')">📊 System Stats</button>
+                    <button class="tab" onclick="switchTab('organizations')">🏢 Organizations</button>
+                    <button class="tab" onclick="switchTab('users')">👥 All Users</button>
+                    <button class="tab" onclick="switchTab('admins')">👨‍💼 Clinic Admins</button>
+                    <button class="tab" onclick="switchTab('audit')">📋 Audit Logs</button>
+                </div>
+
+                <!-- System Stats Tab -->
+                <div id="statsTab">
+                    <div class="stats-grid" id="systemStats">
+                        <div class="stat-card"><div class="stat-number" id="statOrgs">0</div><div class="stat-label">Organizations</div></div>
+                        <div class="stat-card"><div class="stat-number" id="statUsers">0</div><div class="stat-label">Total Users</div></div>
+                        <div class="stat-card"><div class="stat-number" id="statPending">0</div><div class="stat-label">Pending Approval</div></div>
+                        <div class="stat-card"><div class="stat-number" id="statAdmins">0</div><div class="stat-label">Clinic Admins</div></div>
+                        <div class="stat-card"><div class="stat-number" id="statDoctors">0</div><div class="stat-label">Doctors</div></div>
+                        <div class="stat-card"><div class="stat-number" id="statPatients">0</div><div class="stat-label">Patients</div></div>
+                    </div>
+                </div>
+
+                <!-- Organizations Tab -->
+                <div id="organizationsTab" style="display: none;">
+                    <div class="card">
+                        <h2>➕ Add New Organization</h2>
+                        <div class="form-row">
+                            <div class="form-group"><label>Organization Name</label><input type="text" id="orgName" placeholder="Enter organization name"></div>
+                            <div class="form-group"><label>License Number</label><input type="text" id="orgLicense" placeholder="License number"></div>
+                            <div class="form-group"><label>Email</label><input type="email" id="orgEmail" placeholder="contact@hospital.com"></div>
+                            <div class="form-group"><label>Phone</label><input type="text" id="orgPhone" placeholder="Phone number"></div>
+                        </div>
+                        <div class="form-group"><label>Address</label><textarea id="orgAddress" rows="2" placeholder="Full address"></textarea></div>
+                        <div class="form-group"><label>Subscription Status</label>
+                            <select id="orgSubscription"><option value="trial">Trial</option><option value="active">Active</option><option value="expired">Expired</option></select>
+                        </div>
+                        <button onclick="createOrganization()">🏥 Create Organization</button>
+                        <div id="createMessage" class="alert hidden" style="margin-top: 16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <h2>📋 Manage Organizations</h2>
+                        <div style="overflow-x: auto;">
+                            <table><thead><tr><th>ID</th><th>Name</th><th>License</th><th>Status</th><th>Modules</th><th>Actions</th></tr></thead>
+                            <tbody id="organizationsTable"><tr><td colspan="6">Loading...</td></tr></tbody></table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Users Tab -->
+                <div id="usersTab" style="display: none;">
+                    <div class="card">
+                        <h2>👥 All Users (All Organizations)</h2>
+                        <div class="form-row">
+                            <div class="form-group"><label>Filter by Organization</label><select id="filterOrg"><option value="all">All Organizations</option></select></div>
+                            <div class="form-group"><label>Filter by Role</label><select id="filterRole"><option value="all">All Roles</option><option value="admin">Admin</option><option value="doctor">Doctor</option><option value="patient">Patient</option></select></div>
+                            <div class="form-group"><label>Filter by Status</label><select id="filterStatus"><option value="all">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option></select></div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Organization</th><th>Status</th><th>Actions</th></tr></thead>
+                            <tbody id="allUsersTable"><tr><td colspan="7">Loading...</td></tr></tbody></table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clinic Admins Tab -->
+                <div id="adminsTab" style="display: none;">
+                    <div class="card">
+                        <h2>➕ Create Clinic Admin</h2>
+                        <div class="form-row">
+                            <div class="form-group"><label>Organization</label><select id="adminOrgSelect"></select></div>
+                            <div class="form-group"><label>Name</label><input type="text" id="newAdminName" placeholder="Full name"></div>
+                            <div class="form-group"><label>Username</label><input type="text" id="newAdminUsername" placeholder="Username"></div>
+                            <div class="form-group"><label>Email</label><input type="email" id="newAdminEmail" placeholder="admin@hospital.com"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>Password</label><input type="text" id="newAdminPassword" value="Admin123!" readonly></div>
+                        </div>
+                        <button onclick="createClinicAdmin()">➕ Create Clinic Admin</button>
+                        <div id="adminMessage" class="alert hidden" style="margin-top: 16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <h2>📋 Existing Clinic Admins</h2>
+                        <div style="overflow-x: auto;">
+                            <table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Organization</th><th>Status</th><th>Actions</th></tr></thead>
+                            <tbody id="clinicAdminsTable"><tr><td colspan="6">Loading...</td></tr></tbody></table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audit Logs Tab -->
+                <div id="auditTab" style="display: none;">
+                    <div class="card">
+                        <h2>📋 Audit Logs</h2>
+                        <div class="form-row">
+                            <div class="form-group"><label>Filter by User</label><input type="text" id="auditUserFilter" placeholder="Username or email"></div>
+                            <div class="form-group"><label>Filter by Action</label><select id="auditActionFilter"><option value="">All Actions</option><option value="LOGIN_SUCCESS">Login</option><option value="REGISTER">Register</option><option value="APPROVE">Approve</option><option value="DELETE">Delete</option><option value="CREATE">Create</option><option value="UPDATE">Update</option></select></div>
+                            <div class="form-group"><label>Limit</label><select id="auditLimit"><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
+                        </div>
+                        <button onclick="loadAuditLogs()">🔍 Search</button>
+                        <div style="overflow-x: auto; margin-top: 16px;">
+                            <table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>IP Address</th><th>Status</th></tr></thead>
+                            <tbody id="auditTable"><tr><td colspan="6">Click Search to load logs</td></tr></tbody></table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Organization Modal -->
+    <div id="editModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 20px; padding: 32px; max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;">
+            <h3 style="margin-bottom: 20px;">✏️ Edit Organization & Module Access</h3>
+            <input type="hidden" id="editOrgId">
+            <div class="form-group"><label>Organization Name</label><input type="text" id="editOrgName"></div>
+            <div class="form-group"><label>License Number</label><input type="text" id="editOrgLicense"></div>
+            <div class="form-group"><label>Email</label><input type="email" id="editOrgEmail"></div>
+            <div class="form-group"><label>Phone</label><input type="text" id="editOrgPhone"></div>
+            <div class="form-group"><label>Address</label><textarea id="editOrgAddress" rows="2"></textarea></div>
+            <div class="form-group"><label>Subscription Status</label><select id="editOrgSubscription"><option value="trial">Trial</option><option value="active">Active</option><option value="expired">Expired</option></select></div>
+            <div class="form-group"><label>📦 Module Access</label><div id="editModulesList" class="modules-grid"></div></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button onclick="saveOrganization()">💾 Save Changes</button>
+                <button onclick="closeEditModal()" style="background: #64748b;">Cancel</button>
+            </div>
+            <div id="editMessage" class="alert hidden" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div id="resetModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 20px; padding: 32px; max-width: 400px; width: 90%;">
+            <h3>🔑 Reset Password</h3>
+            <input type="hidden" id="resetUserId">
+            <div class="form-group"><label>New Password</label><input type="password" id="newPassword" value="Admin123!"></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button onclick="confirmResetPassword()">Reset Password</button>
+                <button onclick="closeResetModal()" style="background: #64748b;">Cancel</button>
+            </div>
+            <div id="resetMessage" class="alert hidden" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = null;
+        const AVAILABLE_MODULES = [
+            { key: "prenatal", name: "🤰 Prenatal Follow Up" },
+            { key: "postnatal", name: "👶 Postnatal Care" },
+            { key: "fertility", name: "🌱 Fertility Tracker" },
+            { key: "womens_health", name: "🌸 Women's Health" },
+            { key: "mens_health", name: "💪 Men's Health" },
+            { key: "general_health", name: "📊 Follow Up / General Health" },
+            { key: "skin_analysis", name: "🖼️ AI Skin Analysis" }
+        ];
+
+        const savedToken = localStorage.getItem('devToken');
+        if (savedToken) { authToken = savedToken; checkSuperAdmin(); }
+
+        async function checkSuperAdmin() {
+            try {
+                const response = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const user = await response.json();
+                if (user.is_super_admin) { showDashboard(); loadAllData(); }
+                else { alert('Access denied. Super admin only.'); logout(); }
+            } catch (error) { logout(); }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+                if (response.ok && data.access_token) {
+                    authToken = data.access_token;
+                    localStorage.setItem('devToken', authToken);
+                    const meResponse = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                    const user = await meResponse.json();
+                    if (user.is_super_admin) { showDashboard(); loadAllData(); }
+                    else { errorDiv.textContent = 'Access denied. Super admin only.'; errorDiv.classList.remove('hidden'); logout(); }
+                } else { errorDiv.textContent = data.detail || 'Invalid credentials'; errorDiv.classList.remove('hidden'); }
+            } catch (error) { errorDiv.textContent = 'Network error'; errorDiv.classList.remove('hidden'); }
+        });
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('statsTab').style.display = 'none';
+            document.getElementById('organizationsTab').style.display = 'none';
+            document.getElementById('usersTab').style.display = 'none';
+            document.getElementById('adminsTab').style.display = 'none';
+            document.getElementById('auditTab').style.display = 'none';
+            if (tab === 'stats') { document.querySelectorAll('.tab')[0].classList.add('active'); document.getElementById('statsTab').style.display = 'block'; loadSystemStats(); }
+            if (tab === 'organizations') { document.querySelectorAll('.tab')[1].classList.add('active'); document.getElementById('organizationsTab').style.display = 'block'; loadOrganizations(); }
+            if (tab === 'users') { document.querySelectorAll('.tab')[2].classList.add('active'); document.getElementById('usersTab').style.display = 'block'; loadAllUsers(); }
+            if (tab === 'admins') { document.querySelectorAll('.tab')[3].classList.add('active'); document.getElementById('adminsTab').style.display = 'block'; loadClinicAdmins(); loadOrganizationsForSelect(); }
+            if (tab === 'audit') { document.querySelectorAll('.tab')[4].classList.add('active'); document.getElementById('auditTab').style.display = 'block'; }
+        }
+
+        async function loadAllData() { loadSystemStats(); loadOrganizations(); loadAllUsers(); loadClinicAdmins(); loadOrganizationsForSelect(); }
+
+        async function loadSystemStats() {
+            try {
+                const response = await fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const stats = await response.json();
+                document.getElementById('statOrgs').textContent = stats.organizations || 0;
+                document.getElementById('statUsers').textContent = stats.total_users || 0;
+                document.getElementById('statPending').textContent = stats.pending_users || 0;
+                document.getElementById('statAdmins').textContent = stats.clinic_admins || 0;
+                document.getElementById('statDoctors').textContent = stats.doctors || 0;
+                document.getElementById('statPatients').textContent = stats.patients || 0;
+            } catch (error) { console.error('Error loading stats:', error); }
+        }
+
+        async function loadOrganizations() {
+            try {
+                const response = await fetch('/api/organization/organizations', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const orgs = await response.json();
+                const tbody = document.getElementById('organizationsTable');
+                if (!orgs.length) { tbody.innerHTML = '<tr><td colspan="6">No organizations found</td></tr>'; return; }
+                let html = '';
+                orgs.forEach(org => {
+                    const modules = org.allowed_modules || [];
+                    const moduleBadges = modules.slice(0, 3).map(m => { const found = AVAILABLE_MODULES.find(am => am.key === m); return found ? found.name.split(' ')[0] : m; }).join(', ');
+                    const moreCount = modules.length > 3 ? ` +${modules.length - 3}` : '';
+                    html += `<tr><td>${org.id}</td><td><strong>${org.name}</strong></td><td>${org.license_number || '-'}</td>
+                        <td><span style="background: ${org.subscription_status === 'active' ? '#dcfce7' : '#fee2e2'}; padding: 4px 8px; border-radius: 12px;">${org.subscription_status}</span></td>
+                        <td>${moduleBadges}${moreCount}</td>
+                        <td class="action-buttons"><button class="edit-btn" onclick="openEditModal(${org.id})">✏️ Edit</button>
+                        <button class="delete-btn" onclick="deleteOrganization(${org.id})">🗑️ Delete</button></td></tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (error) { console.error('Error:', error); }
+        }
+
+        async function loadAllUsers() {
+            try {
+                const response = await fetch('/api/admin/all-users', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const users = await response.json();
+                const orgFilter = document.getElementById('filterOrg').value;
+                const roleFilter = document.getElementById('filterRole').value;
+                const statusFilter = document.getElementById('filterStatus').value;
+                let filtered = users;
+                if (orgFilter !== 'all') filtered = filtered.filter(u => u.organization_id == orgFilter);
+                if (roleFilter !== 'all') filtered = filtered.filter(u => u.role === roleFilter);
+                if (statusFilter !== 'all') filtered = filtered.filter(u => u.status === statusFilter);
+                const tbody = document.getElementById('allUsersTable');
+                if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="7">No users found</td></tr>'; return; }
+                let html = '';
+                filtered.forEach(user => {
+                    html += `<tr><td>${user.id}</td><td>${user.name || user.username}</td><td>${user.email}</td>
+                        <td>${user.role}</td><td>${user.organization_name || 'N/A'}</td>
+                        <td><span style="background: ${user.status === 'approved' ? '#dcfce7' : '#fef3c7'}; padding: 4px 8px; border-radius: 12px;">${user.status}</span></td>
+                        <td class="action-buttons"><button class="reset-btn" onclick="openResetModal(${user.id})">🔑 Reset Password</button></td></tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (error) { console.error('Error:', error); }
+        }
+
+        async function loadClinicAdmins() {
+            try {
+                const response = await fetch('/api/admin/clinic-admins', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const admins = await response.json();
+                const tbody = document.getElementById('clinicAdminsTable');
+                if (!admins.length) { tbody.innerHTML = '<tr><td colspan="6">No clinic admins found</td></tr>'; return; }
+                let html = '';
+                admins.forEach(admin => {
+                    html += `<tr><td>${admin.id}</td><td>${admin.name || admin.username}</td><td>${admin.email}</td>
+                        <td>${admin.organization_name || 'N/A'}</td>
+                        <td><span style="background: ${admin.status === 'approved' ? '#dcfce7' : '#fef3c7'}; padding: 4px 8px; border-radius: 12px;">${admin.status}</span></td>
+                        <td class="action-buttons"><button class="reset-btn" onclick="openResetModal(${admin.id})">🔑 Reset Password</button>
+                        <button class="delete-btn" onclick="deleteUser(${admin.id})">🗑️ Delete</button></td></tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (error) { console.error('Error:', error); }
+        }
+
+        async function loadOrganizationsForSelect() {
+            try {
+                const response = await fetch('/api/organization/organizations', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const orgs = await response.json();
+                const select = document.getElementById('adminOrgSelect');
+                const filterSelect = document.getElementById('filterOrg');
+                select.innerHTML = '<option value="">Select Organization</option>';
+                filterSelect.innerHTML = '<option value="all">All Organizations</option>';
+                orgs.forEach(org => {
+                    select.innerHTML += `<option value="${org.id}">${org.name}</option>`;
+                    filterSelect.innerHTML += `<option value="${org.id}">${org.name}</option>`;
+                });
+            } catch (error) { console.error('Error:', error); }
+        }
+
+        async function createOrganization() {
+            const data = {
+                name: document.getElementById('orgName').value,
+                license_number: document.getElementById('orgLicense').value,
+                email: document.getElementById('orgEmail').value,
+                phone: document.getElementById('orgPhone').value,
+                address: document.getElementById('orgAddress').value,
+                subscription_status: document.getElementById('orgSubscription').value,
+                allowed_modules: []
+            };
+            if (!data.name) { alert('Organization name is required'); return; }
+            try {
+                const response = await fetch('/api/organization/organizations', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    const msg = document.getElementById('createMessage');
+                    msg.className = 'alert alert-success';
+                    msg.textContent = '✅ Organization created successfully!';
+                    msg.classList.remove('hidden');
+                    setTimeout(() => msg.classList.add('hidden'), 3000);
+                    document.getElementById('orgName').value = '';
+                    document.getElementById('orgLicense').value = '';
+                    document.getElementById('orgEmail').value = '';
+                    document.getElementById('orgPhone').value = '';
+                    document.getElementById('orgAddress').value = '';
+                    loadOrganizations();
+                    loadSystemStats();
+                } else { const error = await response.json(); alert('Error: ' + (error.detail || 'Failed to create')); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        async function openEditModal(orgId) {
+            try {
+                const response = await fetch(`/api/organization/organizations/${orgId}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const org = await response.json();
+                document.getElementById('editOrgId').value = org.id;
+                document.getElementById('editOrgName').value = org.name;
+                document.getElementById('editOrgLicense').value = org.license_number || '';
+                document.getElementById('editOrgEmail').value = org.email || '';
+                document.getElementById('editOrgPhone').value = org.phone || '';
+                document.getElementById('editOrgAddress').value = org.address || '';
+                document.getElementById('editOrgSubscription').value = org.subscription_status || 'trial';
+                const allowedModules = org.allowed_modules || [];
+                let modulesHtml = '';
+                AVAILABLE_MODULES.forEach(module => {
+                    const isChecked = allowedModules.includes(module.key);
+                    modulesHtml += `<label class="module-checkbox"><input type="checkbox" value="${module.key}" ${isChecked ? 'checked' : ''}><span>${module.name}</span></label>`;
+                });
+                document.getElementById('editModulesList').innerHTML = modulesHtml;
+                document.getElementById('editModal').style.display = 'flex';
+            } catch (error) { alert('Error loading organization'); }
+        }
+
+        async function saveOrganization() {
+            const orgId = document.getElementById('editOrgId').value;
+            const checkboxes = document.querySelectorAll('#editModulesList input[type="checkbox"]');
+            const selectedModules = [];
+            checkboxes.forEach(cb => { if (cb.checked) selectedModules.push(cb.value); });
+            const data = {
+                name: document.getElementById('editOrgName').value,
+                license_number: document.getElementById('editOrgLicense').value,
+                email: document.getElementById('editOrgEmail').value,
+                phone: document.getElementById('editOrgPhone').value,
+                address: document.getElementById('editOrgAddress').value,
+                subscription_status: document.getElementById('editOrgSubscription').value,
+                allowed_modules: selectedModules
+            };
+            try {
+                const response = await fetch(`/api/organization/organizations/${orgId}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    const msg = document.getElementById('editMessage');
+                    msg.className = 'alert alert-success';
+                    msg.textContent = '✅ Organization updated successfully!';
+                    msg.classList.remove('hidden');
+                    setTimeout(() => { msg.classList.add('hidden'); closeEditModal(); loadOrganizations(); loadSystemStats(); }, 1500);
+                } else { const error = await response.json(); alert('Error: ' + (error.detail || 'Failed to update')); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        async function deleteOrganization(orgId) {
+            if (!confirm('Are you sure? This will delete the organization and all its data.')) return;
+            try {
+                const response = await fetch(`/api/organization/organizations/${orgId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (response.ok) { alert('Organization deleted'); loadOrganizations(); loadSystemStats(); loadAllUsers(); }
+                else { alert('Delete failed'); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        async function createClinicAdmin() {
+            const data = {
+                name: document.getElementById('newAdminName').value,
+                username: document.getElementById('newAdminUsername').value,
+                email: document.getElementById('newAdminEmail').value,
+                password: document.getElementById('newAdminPassword').value,
+                organization_id: document.getElementById('adminOrgSelect').value,
+                role: 'admin'
+            };
+            if (!data.name || !data.username || !data.email || !data.organization_id) { alert('Please fill all fields'); return; }
+            try {
+                const response = await fetch('/api/admin/create-clinic-admin', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    const msg = document.getElementById('adminMessage');
+                    msg.className = 'alert alert-success';
+                    msg.textContent = '✅ Clinic admin created successfully!';
+                    msg.classList.remove('hidden');
+                    setTimeout(() => msg.classList.add('hidden'), 3000);
+                    document.getElementById('newAdminName').value = '';
+                    document.getElementById('newAdminUsername').value = '';
+                    document.getElementById('newAdminEmail').value = '';
+                    loadClinicAdmins();
+                    loadSystemStats();
+                } else { const error = await response.json(); alert('Error: ' + (error.detail || 'Failed to create')); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        function openResetModal(userId) { document.getElementById('resetUserId').value = userId; document.getElementById('resetModal').style.display = 'flex'; }
+        function closeResetModal() { document.getElementById('resetModal').style.display = 'none'; document.getElementById('resetMessage').classList.add('hidden'); }
+
+        async function confirmResetPassword() {
+            const userId = document.getElementById('resetUserId').value;
+            const newPassword = document.getElementById('newPassword').value;
+            try {
+                const response = await fetch(`/api/admin/reset-password/${userId}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify({ password: newPassword })
+                });
+                if (response.ok) {
+                    const msg = document.getElementById('resetMessage');
+                    msg.className = 'alert alert-success';
+                    msg.textContent = '✅ Password reset successfully!';
+                    msg.classList.remove('hidden');
+                    setTimeout(() => closeResetModal(), 1500);
+                } else { alert('Reset failed'); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        async function deleteUser(userId) {
+            if (!confirm('Are you sure? This will delete the user.')) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (response.ok) { alert('User deleted'); loadClinicAdmins(); loadAllUsers(); loadSystemStats(); }
+                else { alert('Delete failed'); }
+            } catch (error) { alert('Network error'); }
+        }
+
+        async function loadAuditLogs() {
+            const userFilter = document.getElementById('auditUserFilter').value;
+            const actionFilter = document.getElementById('auditActionFilter').value;
+            const limit = document.getElementById('auditLimit').value;
+            let url = `/api/admin/audit-logs?limit=${limit}`;
+            if (userFilter) url += `&user=${encodeURIComponent(userFilter)}`;
+            if (actionFilter) url += `&action=${actionFilter}`;
+            try {
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const logs = await response.json();
+                const tbody = document.getElementById('auditTable');
+                if (!logs.length) { tbody.innerHTML = '<tr><td colspan="6">No logs found</td></tr>'; return; }
+                let html = '';
+                logs.forEach(log => {
+                    html += `<tr><td>${new Date(log.created_at).toLocaleString()}</td><td>${log.username || 'System'}</td>
+                        <td>${log.action}</td><td>${log.resource_type || '-'}</td><td>${log.ip_address || '-'}</td>
+                        <td><span style="background: ${log.status === 'success' ? '#dcfce7' : '#fee2e2'}; padding: 4px 8px; border-radius: 12px;">${log.status}</span></td></tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (error) { console.error('Error:', error); }
+        }
+
+        function closeEditModal() { document.getElementById('editModal').style.display = 'none'; document.getElementById('editMessage').classList.add('hidden'); }
+        function showDashboard() { document.getElementById('loginSection').classList.add('hidden'); document.getElementById('dashboardSection').classList.remove('hidden'); }
+        function logout() { localStorage.removeItem('devToken'); authToken = null; document.getElementById('loginSection').classList.remove('hidden'); document.getElementById('dashboardSection').classList.add('hidden'); document.getElementById('loginForm').reset(); }
+        window.onclick = function(event) { const modal = document.getElementById('editModal'); if (event.target === modal) closeEditModal(); const resetModal = document.getElementById('resetModal'); if (event.target === resetModal) closeResetModal(); };
+        document.getElementById('filterOrg')?.addEventListener('change', () => loadAllUsers());
+        document.getElementById('filterRole')?.addEventListener('change', () => loadAllUsers());
+        document.getElementById('filterStatus')?.addEventListener('change', () => loadAllUsers());
+    </script>
+</body>
+</html>

@@ -8,7 +8,10 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
 from app.utils.audit import log_audit
+from app.models import User, PatientProfile  # ← Add PatientProfile
 from .models import WomensHealthIntake, WomensHealthEntry, WomensHealthPhoto, WomensHealthStatus
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 import json
 import os
 import uuid
@@ -217,65 +220,50 @@ def generate_recommendations(answers: IntakeAnswers) -> RecommendationResponse:
 # ========== ENDPOINTS ==========
 
 @router.post("/intake")
-def save_intake(
+async def save_intake(
     answers: IntakeAnswers,
     request: Request,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    org: Organization = Depends(get_current_organization)
 ):
-    """Save questionnaire answers and generate recommendations"""
+    existing = db.query(WomensHealthIntake).filter(
+        WomensHealthIntake.patient_id == current_user.id,
+        WomensHealthIntake.is_active == True
+    ).first()
     
-    try:
-        # Check if intake already exists for this patient
-        existing_intake = db.query(WomensHealthIntake).filter(
-            WomensHealthIntake.patient_id == current_user.id,
-            WomensHealthIntake.is_active == True
-        ).first()
-        
-        if existing_intake:
-            # Deactivate old intake
-            existing_intake.is_active = False
-        
-        # Generate recommendations
-        recommendations = generate_recommendations(answers)
-        
-        # Create new intake
-        intake = WomensHealthIntake(
-            patient_id=current_user.id,
-            answers=answers.dict(),
-            recommendations=recommendations.dict(),
-            is_active=True
-        )
-        
-        db.add(intake)
-        db.commit()
-        db.refresh(intake)
-        
-        # Log audit
-        log_audit(
-            db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
-            action='CREATE',
-            resource_type='WOMENS_HEALTH_INTAKE',
-            resource_id=intake.id,
-            patient_id=current_user.id,
-            status='success',
-            ip_address=request.client.host,
-            user_agent=request.headers.get('user-agent')
-        )
-        
-        return {
-            "intake_id": intake.id,
-            "recommendations": recommendations.dict(),
-            "message": "Intake saved successfully"
-        }
-        
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving intake: {str(e)}")
+    if existing:
+        existing.is_active = False
+    
+    recommendations = generate_recommendations(answers)
+    
+    intake = WomensHealthIntake(
+        patient_id=current_user.id,
+        organization_id=org.id,
+        answers=answers.dict(),
+        recommendations=recommendations.dict(),  # ← ADD .dict() HERE
+        is_active=True,
+        approved=False
+    )
+    db.add(intake)
+    db.commit()
 
+    # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='CREATE',
+        resource_type='WOMENS_HEALTH_INTAKE',
+        resource_id=intake.id,
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {"status": "pending", "message": "Questionnaire submitted for review"}
 
 @router.post("/recommend")
 def get_recommendations(
@@ -310,7 +298,8 @@ def create_daily_entry(
     entry: DailyEntryRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create or update daily entry for selected conditions"""
     
@@ -389,6 +378,7 @@ def create_daily_entry(
             new_entry = WomensHealthEntry(
                 patient_id=current_user.id,
                 patient_name=patient_name,
+                organization_id=org.id,
                 submission_date=submission_date,
                 conditions_selected=entry.conditions_selected,
                 common_data=entry.common_data.dict(),
@@ -438,7 +428,8 @@ def get_patient_entries(
     condition: Optional[str] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all entries for a patient with optional filters"""
     
@@ -447,7 +438,8 @@ def get_patient_entries(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(WomensHealthEntry).filter(
-        WomensHealthEntry.patient_id == patient_id
+        WomensHealthEntry.patient_id == patient_id,
+        WomensHealthEntry.organization_id == org.id
     )
     
     # Date filters
@@ -506,7 +498,8 @@ def get_entry_by_date(
     date: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get entry for a specific date"""
     
@@ -522,7 +515,8 @@ def get_entry_by_date(
     entry = db.query(WomensHealthEntry).filter(
         and_(
             WomensHealthEntry.patient_id == patient_id,
-            WomensHealthEntry.submission_date == submission_date
+            WomensHealthEntry.submission_date == submission_date,
+            WomensHealthEntry.organization_id == org.id
         )
     ).first()
     
@@ -547,14 +541,16 @@ def update_entry(
     entry: DailyEntryRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Update an existing entry"""
     
     existing_entry = db.query(WomensHealthEntry).filter(
         and_(
             WomensHealthEntry.id == entry_id,
-            WomensHealthEntry.patient_id == current_user.id
+            WomensHealthEntry.patient_id == current_user.id,
+            WomensHealthEntry.organization_id == org.id 
         )
     ).first()
     
@@ -628,7 +624,8 @@ async def upload_photo(
     notes: Optional[str] = Form(None),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Upload a photo for STI or skin condition tracking"""
     
@@ -661,6 +658,7 @@ async def upload_photo(
         # Save to database
         photo = WomensHealthPhoto(
             patient_id=current_user.id,
+            organization_id=org.id,
             entry_id=entry_id,
             condition=condition,
             photo_url=photo_url,
@@ -721,7 +719,8 @@ def get_patient_photos(
     condition: Optional[str] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all photos for a patient"""
     
@@ -730,7 +729,8 @@ def get_patient_photos(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(WomensHealthPhoto).filter(
-        WomensHealthPhoto.patient_id == patient_id
+        WomensHealthPhoto.patient_id == patient_id,
+        WomensHealthPhoto.organization_id == org.id
     )
     
     if condition:
@@ -763,7 +763,8 @@ def generate_doctor_report(
     condition: str,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Generate a report for the doctor"""
     
@@ -783,7 +784,8 @@ def generate_doctor_report(
             WomensHealthEntry.patient_id == patient_id,
             WomensHealthEntry.submission_date >= start,
             WomensHealthEntry.submission_date <= end,
-            WomensHealthEntry.conditions_selected.astext.contains(condition)
+            WomensHealthEntry.conditions_selected.astext.contains(condition),
+            WomensHealthEntry.organization_id == org.id 
         )
     ).order_by(WomensHealthEntry.submission_date).all()
     
@@ -932,18 +934,38 @@ def get_all_entries(
     patient_id: Optional[int] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    org: Organization = Depends(get_current_organization)
 ):
     """Get all entries - admin sees all, patient sees their own"""
     
-    query = db.query(WomensHealthEntry)
+    # ← ADDED: Super admin check
+    if current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Access denied")
     
-    # Filter by role
-    if current_user.role.value == "admin":
+    query = db.query(WomensHealthEntry).filter(
+        WomensHealthEntry.organization_id == org.id
+    )
+    
+    # ← ADDED: Doctor filter
+    if current_user.get('role') == 'doctor':
+        from app.models import PatientDoctorAssignment
+        assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.end_date == None
+        ).all()
+        patient_ids = [a[0] for a in assignments]
+        if patient_ids:
+            query = query.filter(WomensHealthEntry.patient_id.in_(patient_ids))
+        else:
+            query = query.filter(False)
+    
+    # Filter by role (YOUR EXISTING CODE - KEPT AS IS)
+    if current_user.get('role') == 'admin':  # ← CHANGED: .role.value to .get('role')
         if patient_id:
             query = query.filter(WomensHealthEntry.patient_id == patient_id)
     else:
-        query = query.filter(WomensHealthEntry.patient_id == current_user.id)
+        query = query.filter(WomensHealthEntry.patient_id == current_user.get('id'))  # ← CHANGED: .id to .get('id')
     
     entries = query.order_by(WomensHealthEntry.submission_date.desc()).all()
     
@@ -962,16 +984,16 @@ def get_all_entries(
             "photo_urls": []
         })
     
-    # Log audit
+    # Log audit (YOUR EXISTING CODE - KEPT AS IS with .get() changes)
     if request:
         log_audit(
             db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+            user_id=current_user.get('id'),
+            username=current_user.get('username'),
+            user_role=current_user.get('role'),
             action='READ',
             resource_type='WOMENS_HEALTH_ENTRY',
-            patient_id=patient_id or current_user.id,
+            patient_id=patient_id or current_user.get('id'),
             status='success',
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
@@ -984,12 +1006,25 @@ def get_all_entries(
 
 @router.get("/intake/active")
 def get_active_intake(
+    request: Request,
+    user_id: Optional[int] = None,
+    
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
+    # If user_id is provided and current user is admin/doctor, get that user's intake
+    if user_id is not None:
+        if current_user.role.value not in ["doctor", "admin"]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        target_user_id = user_id
+    else:
+        target_user_id = current_user.id
+    
     intake = db.query(WomensHealthIntake).filter(
-        WomensHealthIntake.patient_id == current_user.id,
-        WomensHealthIntake.is_active == True
+        WomensHealthIntake.patient_id == target_user_id,
+        WomensHealthIntake.is_active == True,
+        WomensHealthIntake.organization_id == org.id
     ).first()
     
     if not intake:
@@ -1001,14 +1036,9 @@ def get_active_intake(
         import json
         recommendations = json.loads(recommendations)
     
-    # Check the actual structure
-    print("🔍 Recommendations structure:", type(recommendations))
-    print("🔍 Recommendations content:", recommendations)
-    
     conditions = []
     condition_names = []
     
-    # The recommendations might be under a "conditions" key
     if "conditions" in recommendations:
         rec_data = recommendations["conditions"]
     else:
@@ -1026,10 +1056,177 @@ def get_active_intake(
             }
             if cond in names:
                 condition_names.append(names[cond])
+
+                # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='WOMENS_HEALTH_INTAKE',
+        resource_id=intake.id if intake else None,
+        patient_id=target_user_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {
         "has_intake": True,
         "intake_id": intake.id,
         "conditions": conditions,
-        "condition_names": condition_names
+        "condition_names": condition_names,
+        "answers": intake.answers  # ← Also return the full answers
     }
+
+
+
+
+@router.put("/approve/{patient_id}")
+async def approve_womens_health(
+    patient_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
+):
+    if current_user.role.value not in ["doctor", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    intake = db.query(WomensHealthIntake).filter(
+        WomensHealthIntake.patient_id == patient_id,
+        WomensHealthIntake.is_active == True,
+        WomensHealthIntake.organization_id == org.id
+    ).first()
+    
+    if not intake:
+        raise HTTPException(status_code=404, detail="No active intake found")
+    
+    intake.approved = True
+    intake.approved_by = current_user.id
+    intake.approved_at = datetime.now()
+    db.commit()
+
+        # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='UPDATE',
+        resource_type='WOMENS_HEALTH_INTAKE',
+        resource_id=intake.id,
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        details={"approved": True}
+    )
+    
+    return {"approved": True, "message": "Patient approved for tracking"}
+    
+
+@router.get("/approval-status")
+async def get_approval_status(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
+):
+    # DEBUG PRINTS
+    print("=" * 50)
+    print(f"🔍 [DEBUG] get_approval_status called")
+    print(f"🔍 [DEBUG] current_user.id: {current_user.id}")
+    print(f"🔍 [DEBUG] current_user.email: {current_user.email}")
+    print(f"🔍 [DEBUG] current_user.role: {current_user.role}")
+    print("=" * 50)
+    
+    # Query for active intake
+    intake = db.query(WomensHealthIntake).filter(
+        WomensHealthIntake.patient_id == current_user.id,
+        WomensHealthIntake.is_active == True,
+        WomensHealthIntake.organization_id == org.id
+    ).first()
+    
+    # DEBUG: Show what was found
+    if intake:
+        print(f"✅ [DEBUG] Found intake ID: {intake.id}")
+        print(f"✅ [DEBUG] Intake patient_id: {intake.patient_id}")
+        print(f"✅ [DEBUG] Intake is_active: {intake.is_active}")
+        print(f"✅ [DEBUG] Intake approved: {intake.approved}")
+    else:
+        print(f"❌ [DEBUG] No active intake found for patient_id: {current_user.id}")
+    
+    print("=" * 50)
+
+        # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='WOMENS_HEALTH_APPROVAL_STATUS',
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    # Return appropriate status
+    if not intake:
+        return {"status": "not_submitted"}
+    
+    if intake.approved:
+        return {"status": "approved", "recommendations": intake.recommendations}
+    
+    return {"status": "pending"}
+
+
+@router.get("/pending-users")
+async def get_pending_users(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
+):
+    if current_user.role.value not in ["doctor", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Get all active intakes that are not approved
+    pending_intakes = db.query(WomensHealthIntake).filter(
+        WomensHealthIntake.is_active == True,
+        WomensHealthIntake.approved == False,
+        WomensHealthIntake.organization_id == org.id
+    ).all()
+    
+    # Get user info for each pending intake
+    result = []
+    for intake in pending_intakes:
+        user = db.query(User).filter(User.id == intake.patient_id).first()
+        if user:
+            result.append({
+                "id": user.id,
+                "name": user.name or user.username,
+                "email": user.email,
+                "submitted_at": intake.completed_at
+            })
+
+                # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='WOMENS_HEALTH_PENDING_USERS',
+        patient_id=None,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        details={"pending_count": len(result)}
+    )
+    
+    return result
+

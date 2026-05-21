@@ -10,7 +10,8 @@ class MedicalRecordService:
     
     @staticmethod
     def get_medical_records(  # ✅ CHANGED: Renamed to plural
-        db: Session, 
+        db: Session,
+        organization_id: int, 
         skip: int = 0, 
         limit: int = 100,
         patient_id: Optional[str] = None,
@@ -18,7 +19,9 @@ class MedicalRecordService:
     ) -> List[models.MedicalRecord]:
         """Get all medical records with optional filtering"""
         try:
-            query = db.query(models.MedicalRecord)
+            query = db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.organization_id == organization_id
+            )
             
             if patient_id:
                 query = query.filter(models.MedicalRecord.patient_id == patient_id)
@@ -31,16 +34,19 @@ class MedicalRecordService:
             return []
     
     @staticmethod
-    def get_medical_record_by_id(db: Session, record_id: str) -> Optional[models.MedicalRecord]:  # ✅ CHANGED: Renamed to avoid conflict
+    def get_medical_record_by_id(db: Session, record_id: str, organization_id: int) -> Optional[models.MedicalRecord]:
         """Get medical record by ID"""
         try:
-            return db.query(models.MedicalRecord).filter(models.MedicalRecord.id == record_id).first()
+            return db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.id == record_id,
+                models.MedicalRecord.organization_id == organization_id 
+                ).first()
         except Exception as e:
             logger.error(f"Error getting record by ID {record_id}: {e}")
             return None
     
     @staticmethod
-    def create_medical_record(db: Session, record_data: dict) -> models.MedicalRecord:  # ✅ CHANGED: Accept dict instead of schema
+    def create_medical_record(db: Session, record_data: dict, organization_id: int) -> models.MedicalRecord:
         """Create new medical record - accepts dict for flexibility"""
         try:
             # If it's already a schema object, convert to dict
@@ -50,8 +56,9 @@ class MedicalRecordService:
             # Ensure date is set if not provided
             if 'date' not in record_data or not record_data['date']:
                 record_data['date'] = datetime.now().strftime("%Y-%m-%d")
+
+            db_record = models.MedicalRecord(**record_data, organization_id=organization_id)
             
-            db_record = models.MedicalRecord(**record_data)
             db.add(db_record)
             db.commit()
             db.refresh(db_record)
@@ -65,11 +72,15 @@ class MedicalRecordService:
     def update_medical_record(
         db: Session, 
         record_id: str, 
-        record_update: dict  # ✅ CHANGED: Accept dict instead of schema
+        record_update: dict,  # ✅ CHANGED: Accept dict instead of schema
+        organization_id: int
     ) -> Optional[models.MedicalRecord]:
         """Update medical record - accepts dict for flexibility"""
         try:
-            db_record = db.query(models.MedicalRecord).filter(models.MedicalRecord.id == record_id).first()
+            db_record = db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.id == record_id,
+                models.MedicalRecord.organization_id == organization_id
+                ).first()
             if not db_record:
                 return None
                 
@@ -92,10 +103,14 @@ class MedicalRecordService:
             raise e
     
     @staticmethod
-    def delete_medical_record(db: Session, record_id: str) -> bool:
+    def delete_medical_record(db: Session, record_id: str, organization_id: int) -> bool:
         """Delete medical record"""
         try:
-            db_record = db.query(models.MedicalRecord).filter(models.MedicalRecord.id == record_id).first()
+            db_record = db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.id == record_id,
+                models.MedicalRecord.organization_id == organization_id 
+                
+                ).first()
             if not db_record:
                 return False
                 
@@ -109,7 +124,7 @@ class MedicalRecordService:
     
     # Specialized methods - UPDATED to handle dict input
     @staticmethod
-    def create_lab_result(db: Session, lab_data: dict) -> models.MedicalRecord:  # ✅ CHANGED: Accept dict
+    def create_lab_result(db: Session, lab_data: dict, organization_id: int) -> models.MedicalRecord:
         """Create lab result from dict data"""
         try:
             record_data = {
@@ -131,13 +146,13 @@ class MedicalRecordService:
                     record_data['details'] = {}
                 record_data['details']['interpretation'] = lab_data['interpretation']
                 
-            return MedicalRecordService.create_medical_record(db, record_data)
+            return MedicalRecordService.create_medical_record(db, record_data, organization_id)
         except Exception as e:
             logger.error(f"Error creating lab result: {e}")
             raise e
     
     @staticmethod
-    def create_prescription(db: Session, prescription_data: dict) -> models.MedicalRecord:  # ✅ CHANGED: Accept dict
+    def create_prescription(db: Session, prescription_data: dict, organization_id: int) -> models.MedicalRecord:
         """Create prescription from dict data"""
         try:
             record_data = {
@@ -156,25 +171,31 @@ class MedicalRecordService:
                     "instructions": prescription_data.get('instructions', 'Take as directed')
                 }
             }
-            return MedicalRecordService.create_medical_record(db, record_data)
+            return MedicalRecordService.create_medical_record(db, record_data, organization_id)  # ← ADD
         except Exception as e:
             logger.error(f"Error creating prescription: {e}")
             raise e
     
     @staticmethod
-    def get_records_by_category(db: Session, category: str) -> List[models.MedicalRecord]:
+    def get_records_by_category(db: Session, category: str, organization_id: int) -> List[models.MedicalRecord]:
         """Get records by category"""
         try:
-            return db.query(models.MedicalRecord).filter(models.MedicalRecord.category == category).all()
+            return db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.category == category,
+                models.MedicalRecord.organization_id == organization_id 
+                ).all()
         except Exception as e:
             logger.error(f"Error getting records by category {category}: {e}")
             return []
     
     @staticmethod
-    def get_patient_records(db: Session, patient_id: str) -> List[models.MedicalRecord]:
+    def get_patient_records(db: Session, patient_id: str, organization_id: int) -> List[models.MedicalRecord]:
         """Get records by patient ID"""
         try:
-            return db.query(models.MedicalRecord).filter(models.MedicalRecord.patient_id == patient_id).all()
+            return db.query(models.MedicalRecord).filter(
+                models.MedicalRecord.patient_id == patient_id,
+                models.MedicalRecord.organization_id == organization_id 
+                ).all()
         except Exception as e:
             logger.error(f"Error getting records for patient {patient_id}: {e}")
             return []

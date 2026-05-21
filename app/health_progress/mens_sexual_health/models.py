@@ -17,11 +17,14 @@ class MensHealthIntake(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     completed_at = Column(DateTime, server_default=func.now())
     answers = Column(JSON, nullable=False)
     recommendations = Column(JSON, nullable=True)
     confirmed_conditions = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
+    approved = Column(Boolean, default=False)      # ← ADD THIS LINE
+    approved_at = Column(DateTime, nullable=True)
 
 
 class MensHealthEntry(Base):
@@ -30,6 +33,7 @@ class MensHealthEntry(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     patient_name = Column(String, nullable=False)
     submission_date = Column(Date, nullable=False, index=True)
     submitted_at = Column(DateTime, server_default=func.now())
@@ -56,6 +60,7 @@ class MensHealthPhoto(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     entry_id = Column(Integer, nullable=True, index=True)
     condition = Column(String, nullable=False)  # 'size', 'peyronies'
     photo_url = Column(String, nullable=False)
@@ -73,6 +78,7 @@ class MensHealthCalibration(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
     grid_size_pixels = Column(Float, nullable=False)  # pixels per grid square (1 cm)
     card_type = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)

@@ -8,6 +8,7 @@ class LifelongEntry(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, nullable=False)
     patient_name = Column(String, nullable=False)
+    organization_id = Column(Integer, nullable=False, default=1) 
     submission_date = Column(String, nullable=False)
     
     # Store all data in JSON

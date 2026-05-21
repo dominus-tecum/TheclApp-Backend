@@ -9,7 +9,9 @@ from app.models import User
 from app.utils.audit import log_audit
 from fastapi import Request
 from datetime import date, datetime, timedelta
-
+from app.models import User, UserRole
+from app.organization.dependencies import get_current_organization
+from app.models import Organization
 import json
 import os
 import uuid
@@ -151,7 +153,8 @@ def save_intake(
     answers: IntakeAnswers,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Save questionnaire answers and generate recommendations"""
     
@@ -168,6 +171,7 @@ def save_intake(
         
         intake = MensHealthIntake(
             patient_id=current_user.id,
+            organization_id=org.id,
             answers=answers.dict(),
             recommendations=recommendations,
             is_active=True
@@ -207,7 +211,8 @@ def create_daily_entry(
     entry: DailyEntryRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Create daily entry for selected conditions"""
     
@@ -257,6 +262,7 @@ def create_daily_entry(
             new_entry = MensHealthEntry(
                 patient_id=current_user.id,
                 patient_name=patient_name,
+                organization_id=org.id,
                 submission_date=submission_date,
                 conditions_selected=entry.conditions_selected,
                 condition_data=condition_data,
@@ -302,13 +308,15 @@ def get_patient_entries(
     condition: Optional[str] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(MensHealthEntry).filter(
-        MensHealthEntry.patient_id == patient_id
+        MensHealthEntry.patient_id == patient_id,
+        MensHealthEntry.organization_id == org.id
     )
     
     if start_date:
@@ -324,6 +332,20 @@ def get_patient_entries(
         )
     
     entries = query.order_by(MensHealthEntry.submission_date.desc()).all()
+
+    # ✅ ADD AUDIT LOG
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_ENTRY',
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get('user-agent') if request else None
+    )
     
     return {
         "patient_id": patient_id,
@@ -348,7 +370,8 @@ def get_entry_by_date(
     date: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -361,12 +384,28 @@ def get_entry_by_date(
     entry = db.query(MensHealthEntry).filter(
         and_(
             MensHealthEntry.patient_id == patient_id,
-            MensHealthEntry.submission_date == submission_date
+            MensHealthEntry.submission_date == submission_date,
+            MensHealthEntry.organization_id == org.id
         )
     ).first()
     
     if not entry:
         return {"exists": False, "message": "No entry found for this date"}
+
+    # ✅ ADD AUDIT LOG
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_ENTRY',
+        resource_id=entry.id,
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {
         "exists": True,
@@ -388,7 +427,8 @@ async def upload_photo(
     notes: Optional[str] = Form(None),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """Upload a photo for size measurement or Peyronie's tracking"""
     
@@ -412,6 +452,7 @@ async def upload_photo(
         
         photo = MensHealthPhoto(
             patient_id=current_user.id,
+            organization_id=org.id,
             entry_id=entry_id,
             condition=condition,
             photo_url=photo_url,
@@ -437,6 +478,22 @@ async def upload_photo(
                     current_photo_ids.append(photo.id)
                     entry.photo_ids = current_photo_ids
                     db.commit()
+
+        # ✅ ADD AUDIT LOG HERE
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+            action='CREATE',
+            resource_type='MENS_HEALTH_PHOTO',
+            resource_id=photo.id,
+            patient_id=current_user.id,
+            status='success',
+            ip_address=request.client.host if request else None,
+            user_agent=request.headers.get('user-agent') if request else None,
+            details={"condition": condition, "consent_shared": consent_shared}
+        )
         
         return {
             "id": photo.id,
@@ -456,13 +513,15 @@ def get_patient_photos(
     condition: Optional[str] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     if patient_id != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(MensHealthPhoto).filter(
-        MensHealthPhoto.patient_id == patient_id
+        MensHealthPhoto.patient_id == patient_id,
+        MensHealthPhoto.organization_id == org.id 
     )
     
     if condition:
@@ -514,14 +573,18 @@ def get_all_entries(
     patient_id: Optional[int] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
 ):
     """
     Get all men's sexual health entries.
     Doctors can see all patients. Patients can only see their own.
     """
     try:
-        query = db.query(MensHealthEntry)
+        query = db.query(MensHealthEntry).filter(
+            MensHealthEntry.organization_id == org.id  # ← ADD
+        )
+
         
         # Role-based filtering
         if current_user.role.value != "admin" and current_user.role.value != "doctor":
@@ -587,34 +650,60 @@ def get_all_entries(
 
 @router.get("/intake/active")
 def get_active_intake(
+    request: Request,
+    user_id: Optional[int] = None,
+    
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization) 
 ):
+    # Determine which user to fetch
+    target_user_id = user_id if user_id else current_user.id
+    
+    # Only admin can view other users' intakes
+    if user_id and user_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
     intake = db.query(MensHealthIntake).filter(
-        MensHealthIntake.patient_id == current_user.id,
-        MensHealthIntake.is_active == True
+        MensHealthIntake.patient_id == target_user_id,
+        MensHealthIntake.is_active == True,
+        MensHealthIntake.organization_id == org.id
     ).first()
     
     if not intake:
         return {"has_intake": False}
     
     # Extract recommended conditions
-    recommendations = intake.recommendations
+    recommendations = intake.recommendations or {}
     conditions = [cond for cond, data in recommendations.items() if data.get("recommended")]
     
-    # Get condition names for display
     condition_names = []
+    names = {
+        "size_concern": "Size & Girth",
+        "erectile_dysfunction": "Erectile Dysfunction",
+        "premature_ejaculation": "Premature Ejaculation",
+        "low_testosterone": "Low Testosterone",
+        "peyronies": "Peyronie's Disease",
+        "performance_anxiety": "Performance Anxiety"
+    }
     for cond in conditions:
-        names = {
-            "size_concern": "Size & Girth",
-            "erectile_dysfunction": "Erectile Dysfunction",
-            "premature_ejaculation": "Premature Ejaculation",
-            "low_testosterone": "Low Testosterone",
-            "peyronies": "Peyronie's Disease",
-            "performance_anxiety": "Performance Anxiety"
-        }
         if cond in names:
             condition_names.append(names[cond])
+
+    # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_INTAKE',
+        resource_id=intake.id,
+        patient_id=target_user_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
     
     return {
         "has_intake": True,
@@ -622,5 +711,121 @@ def get_active_intake(
         "conditions": conditions,
         "condition_names": condition_names,
         "answers": intake.answers
-        # REMOVE THIS LINE: "created_at": intake.created_at.isoformat() if intake.created_at else None
     }
+
+@router.get("/approval-status")
+def get_approval_status(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),org: Organization = Depends(get_current_organization)):
+    intake = db.query(MensHealthIntake).filter(
+        MensHealthIntake.patient_id == current_user.id,
+        MensHealthIntake.is_active == True,
+        MensHealthIntake.organization_id == org.id
+    ).first()
+
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_APPROVAL_STATUS',
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    if not intake:
+        return {"status": "not_submitted"}
+    
+    if hasattr(intake, 'approved') and intake.approved:
+        return {"status": "approved"}
+    else:
+        return {"status": "pending"}
+
+@router.get("/pending-users")
+def get_pending_users(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    pending = []
+    
+    intakes = db.query(MensHealthIntake).filter(
+        MensHealthIntake.is_active == True,
+        MensHealthIntake.approved == False,
+        MensHealthIntake.organization_id == org.id
+    ).all()
+    
+    for intake in intakes:
+        user = db.query(User).filter(User.id == intake.patient_id).first()
+        if user:
+            pending.append({
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "submitted_at": intake.completed_at.isoformat() if intake.completed_at else None,
+                "conditions": intake.recommendations if intake.recommendations else {}
+            })
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_PENDING_USERS',
+        patient_id=None,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        details={"pending_count": len(pending)}
+    )
+    
+    return pending
+
+@router.put("/approve/{user_id}")
+def approve_intake(
+    user_id: int,
+    request: Request, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db),
+    org: Organization = Depends(get_current_organization)
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Find active intake for this user (like Women's Health does)
+    intake = db.query(MensHealthIntake).filter(
+        MensHealthIntake.patient_id == user_id,
+        MensHealthIntake.is_active == True,
+        MensHealthIntake.organization_id == org.id
+    ).first()
+    
+    if not intake:
+        raise HTTPException(status_code=404, detail="No active intake found for this user")
+    
+    intake.approved = True
+    intake.approved_at = datetime.now()
+    db.commit()
+
+    # ✅ ADD AUDIT LOG HERE
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='UPDATE',
+        resource_type='MENS_HEALTH_INTAKE',
+        resource_id=intake.id,
+        patient_id=user_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        details={"approved": True}
+    )
+    
+    return {"message": f"Intake approved for user {user_id}"}    
