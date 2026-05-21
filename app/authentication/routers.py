@@ -468,4 +468,40 @@ def update_super_admin(
             "username": admin_user.username,
             "is_super_admin": admin_user.is_super_admin
         }
-    }    
+    } 
+
+
+@router.post("/create-super-admin-temp")
+def create_super_admin_temp(
+    email: str = Body(...),
+    password: str = Body(...),
+    username: str = Body(...),
+    db: Session = Depends(get_db)
+):
+    """TEMPORARY - Create super admin"""
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        existing.is_super_admin = True
+        existing.role = UserRole.ADMIN
+        existing.status = 'approved'
+        db.commit()
+        return {"message": "Existing user upgraded to super admin"}
+    
+    hashed = pwd_context.hash(password)
+    new_admin = User(
+        username=username,
+        email=email,
+        password_hash=hashed,
+        role=UserRole.ADMIN,
+        is_super_admin=True,
+        organization_id=1,
+        status='approved',
+        name=username
+    )
+    db.add(new_admin)
+    db.commit()
+    
+    return {"message": "Super admin created", "user_id": new_admin.id}       
