@@ -9,6 +9,8 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum, Bool
 class UserRole(enum.Enum):
     PATIENT = "patient"
     DOCTOR = "doctor"
+    NURSE = "nurse"      
+    STAFF = "staff"      
     ADMIN = "admin"
 
 class User(Base):

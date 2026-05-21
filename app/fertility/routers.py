@@ -463,6 +463,8 @@ def get_fertility_entry(
 
 @router.put("/entries/{entry_id}", response_model=FertilityEntryResponse)
 def update_fertility_entry(
+        if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     entry_id: int,
     update_data: FertilityEntryUpdate,
     request: Request,
@@ -496,6 +498,8 @@ def update_fertility_entry(
 
 @router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fertility_entry(
+        if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     entry_id: int,
     request: Request,
     patient_id: int = Depends(get_current_patient_id),
@@ -588,6 +592,8 @@ def get_cycle_entries(
 # Fertility Profile Routes
 @router.post("/profile", response_model=FertilityProfileResponse, status_code=status.HTTP_201_CREATED)
 def create_fertility_profile(
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     profile_data: FertilityProfileCreate,
     request: Request,
     patient_id: int = Depends(get_current_patient_id),
@@ -648,6 +654,8 @@ def get_fertility_profile(
 
 @router.put("/profile", response_model=FertilityProfileResponse)
 def update_fertility_profile(
+        if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     update_data: FertilityProfileUpdate,
     request: Request,
     patient_id: int = Depends(get_current_patient_id),
@@ -679,6 +687,8 @@ def update_fertility_profile(
 
 @router.delete("/profile", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fertility_profile(
+    if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     request: Request,
     patient_id: int = Depends(get_current_patient_id),
     db: Session = Depends(get_db),
@@ -1210,6 +1220,8 @@ def health_check(db: Session = Depends(get_db)):
 
 @router.post("/entries", response_model=FertilityEntryResponse)
 def create_or_update_fertility_entry(
+        if current_user.get('role') not in ['doctor', 'admin']:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     entry_data: FertilityEntryCreate,
     request: Request,
     patient_id: int = Depends(get_current_patient_id),

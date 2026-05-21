@@ -221,6 +221,7 @@
             const data = await res.json();
             if (res.ok && data.access_token) {
                 localStorage.setItem('authToken', data.access_token);
+                localStorage.setItem('userRole', data.user.role);
                 location.reload();
             } else {
                 document.getElementById('loginError').textContent = data.detail || 'Invalid credentials';
@@ -246,17 +247,48 @@
 }
 
 
-
-
-
-
-
-
-
     function logout() {
         localStorage.removeItem('authToken');
+        localStorage.removeItem('userRole');
         location.reload();
     }
+
+
+    function requireWriteAccess() {
+    const userRole = localStorage.getItem('userRole');
+    if (userRole !== 'doctor') {
+        showAlert('Only doctors can create medical records', 'error');
+        return false;
+    }
+    return true;
+}
+
+function hideWriteButtonsForNonDoctors() {
+    const userRole = localStorage.getItem('userRole');
+    if (userRole !== 'doctor') {
+        document.querySelectorAll('.btn-primary').forEach(btn => {
+            btn.style.display = 'none';
+        });
+        
+        let msg = document.querySelector('.readonly-msg');
+        if (!msg) {
+            msg = document.createElement('div');
+            msg.className = 'alert readonly-msg';
+            msg.style.background = '#e0f2fe';
+            msg.style.color = '#0284c7';
+            msg.style.padding = '12px';
+            msg.style.borderRadius = '10px';
+            msg.style.marginBottom = '16px';
+            document.querySelector('.card').insertBefore(msg, document.querySelector('.card').firstChild);
+        }
+        
+        if (userRole === 'admin') {
+            msg.innerHTML = '👑 <strong>Admin View</strong> - You can view all records but cannot create medical records. Only doctors can prescribe medication.';
+        } else {
+            msg.innerHTML = '📖 <strong>Read-Only Mode</strong> - You are viewing as nurse/staff. Only doctors can create medical records.';
+        }
+    }
+}
 
     async function loadDoctors() {
     try {
@@ -337,6 +369,7 @@ if (authToken) {
     document.getElementById('authOverlay').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
     populateDoctorDropdowns();
+    hideWriteButtonsForNonDoctors();
 }
 
     function showAlert(msg, type) {
@@ -534,7 +567,8 @@ async function changePatientDoctor() {
     addMedicationField();
     
     async function createLabResult() {
-    console.log("🟢 createLabResult called");
+
+        if (!requireWriteAccess()) return;
     
     const patientId = document.getElementById('labSelectedPatientId').value;
     const patientName = document.getElementById('labSelectedPatientName').value;
@@ -618,6 +652,7 @@ async function changePatientDoctor() {
 }
     
     async function createPrescription() {
+        if (!requireWriteAccess()) return;
     const patientId = document.getElementById('rxSelectedPatientId').value;
     const patientName = document.getElementById('rxSelectedPatientName').value;
     const doctor = document.getElementById('rxDoctor').value;
@@ -687,6 +722,7 @@ async function changePatientDoctor() {
 }
     
     async function createMedicalHistory() {
+            if (!requireWriteAccess()) return;
         const patientId = document.getElementById('historySelectedPatientId').value;
         const patientName = document.getElementById('historySelectedPatientName').value;
         const visitType = document.getElementById('visitType').value;
@@ -784,6 +820,7 @@ async function changePatientDoctor() {
 }
     
     async function deleteRecord(id) {
+        if (!requireWriteAccess()) return;
         if (!confirm('Delete this record?')) return;
         try {
             const res = await fetch(`/api/medical-record/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${authToken}` } });
