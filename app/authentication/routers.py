@@ -421,3 +421,51 @@ async def save_consent(
     db.commit()
     
     return {"message": "Consent recorded"}
+
+@router.post("/update-super-admin")
+def update_super_admin(
+    email: str = Body(None),
+    password: str = Body(None),
+    username: str = Body(None),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update super admin account - Only existing super admin can use this"""
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    
+    # SECURITY: Only existing super admin can access
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    # Get the super admin user (usually the one making the request)
+    admin_user = db.query(User).filter(User.id == current_user.get('id')).first()
+    
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+    
+    # Update fields if provided
+    if email:
+        admin_user.email = email
+    if username:
+        admin_user.username = username
+    if password:
+        admin_user.password_hash = pwd_context.hash(password)
+    
+    # Ensure super admin flag stays true
+    admin_user.is_super_admin = True
+    admin_user.role = UserRole.ADMIN
+    admin_user.status = 'approved'
+    
+    db.commit()
+    db.refresh(admin_user)
+    
+    return {
+        "message": "Super admin updated successfully",
+        "user": {
+            "id": admin_user.id,
+            "email": admin_user.email,
+            "username": admin_user.username,
+            "is_super_admin": admin_user.is_super_admin
+        }
+    }    
