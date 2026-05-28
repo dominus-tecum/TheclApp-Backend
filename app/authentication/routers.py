@@ -185,7 +185,7 @@ def register(user: UserRegister, request: Request, db: Session = Depends(get_db)
         request.session.pop('pending_consent_ids', None)
         
         # Clear the session
-        del request.session['pending_consent']
+        request.session.pop('pending_consent_ids', None)
     # ========== END OF CONSENT LINKING ==========
 
     print(f"✅ REGISTER - User created: {created_user.id}, {created_user.email}, {created_user.username}")
