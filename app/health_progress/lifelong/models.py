@@ -14,7 +14,7 @@ class LifelongEntry(Base):
     # Store all data in JSON
     common_data = Column(JSON, nullable=True)
     conditions_data = Column(JSON, nullable=True)
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="good")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

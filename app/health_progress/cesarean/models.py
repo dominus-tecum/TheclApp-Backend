@@ -18,5 +18,6 @@ class CesareanSectionEntry(Base):
     condition_data = Column(JSON, nullable=False)  # Store cesarean fields as JSON
     
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     photo_urls = Column(JSON, default=list)

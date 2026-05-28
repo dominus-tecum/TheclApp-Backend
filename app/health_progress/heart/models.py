@@ -31,5 +31,5 @@ class HeartEntry(Base):
     swelling_level = Column(Integer, nullable=True)
     breathing_difficulty = Column(Integer, nullable=True)
     condition_type = Column(String, default="heart")
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

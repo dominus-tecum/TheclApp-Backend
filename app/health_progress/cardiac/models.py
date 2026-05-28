@@ -19,4 +19,5 @@ class CardiacSurgeryEntry(Base):
     photo_urls = Column(JSON, default=list)        # Store photo URLs as JSON array
     
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -187,7 +187,7 @@ class FertilityEntry(Base):
     submission_date = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD format
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Relationships
     patient = relationship("Patient", back_populates="fertility_entries")
     
@@ -235,7 +235,7 @@ class FertilityProfile(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Relationships
     patient = relationship("Patient", back_populates="fertility_profile", uselist=False)
     
@@ -264,7 +264,7 @@ class Patient(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Relationships
     fertility_entries = relationship("FertilityEntry", back_populates="patient", cascade="all, delete-orphan")
     fertility_profile = relationship("FertilityProfile", back_populates="patient", cascade="all, delete-orphan")
@@ -304,7 +304,7 @@ class CycleAnalysis(Base):
     # Timestamps
     analyzed_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Relationships
     patient = relationship("Patient")
     
@@ -332,7 +332,7 @@ class FertilityInsight(Base):
     # Timestamps
     generated_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=True)
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Relationships
     patient = relationship("Patient")
     

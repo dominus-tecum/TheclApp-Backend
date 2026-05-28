@@ -15,7 +15,7 @@ class PostnatalEntry(Base):
     infant_name = Column(String, nullable=False)
     submission_date = Column(String, nullable=False)
     condition_type = Column(String, default='postnatal')
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # MATERNAL RECOVERY
     lochia_flow = Column(String)
     lochia_color = Column(String)
@@ -112,3 +112,4 @@ class PostnatalProfile(Base):
     infant_birth_date = Column(String)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)

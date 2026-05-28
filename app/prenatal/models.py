@@ -55,3 +55,4 @@ class PrenatalEntry(Base):
     status = Column(String)
     submitted_at = Column(DateTime)
     urgency_status = Column(String, default='low')
+    deleted_at = Column(DateTime(timezone=True), nullable=True)

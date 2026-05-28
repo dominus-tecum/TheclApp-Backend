@@ -639,7 +639,10 @@ async function approvePatient(userId) {
     try {
         const response = await fetch(`/api/users/${userId}/approve`, {
             method: 'PUT',
-            headers: { 'Authorization': `Bearer ${authToken}` }
+            headers: { 
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
         });
         
         if (response.ok) {
@@ -647,24 +650,13 @@ async function approvePatient(userId) {
             loadPendingPatients();
             loadStats();
         } else {
-            alert('Approval failed');
+            const error = await response.json();
+            alert('Approval failed: ' + (error.detail || 'Unknown error'));
         }
     } catch (error) {
         alert('Error: ' + error.message);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
         
         async function approveStaff(userId) {
             try {

@@ -32,4 +32,5 @@ class CancerEntry(Base):
     # Condition type and timestamps
     condition_type = Column(String(50), default="cancer")
     submitted_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     urgency_status = Column(String(50), default="low")  # Will be calculated by service

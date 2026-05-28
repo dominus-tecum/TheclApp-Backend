@@ -16,7 +16,7 @@ class OrthopedicSurgeryEntry(Base):
     # ✅ EXACT same structure as cesarean
     common_data = Column(JSON, nullable=False)     # Store common fields as JSON
     condition_data = Column(JSON, nullable=False)  # Store orthopedic fields as JSON
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     photo_urls = Column(JSON, default=list)

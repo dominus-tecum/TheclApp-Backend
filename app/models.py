@@ -47,6 +47,23 @@ class User(Base):
     status = Column(String, default='pending')  # 'pending' or 'approved'
     profile_image = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+        # ========== ENCRYPTED FIELDS FOR COMPLIANCE ==========
+    # These will store encrypted versions of PII
+    name_encrypted = Column(Text, nullable=True)
+    email_encrypted = Column(Text, nullable=True)
+    phone_encrypted = Column(Text, nullable=True)
+    passport_encrypted = Column(Text, nullable=True)
+    emirates_id_encrypted = Column(Text, nullable=True)
+    
+    # Hashed fields for duplicate checking (one-way, cannot be reversed)
+    email_hash = Column(String, unique=True, index=True, nullable=True)
+    phone_hash = Column(String, unique=True, index=True, nullable=True)
+    passport_hash = Column(String, unique=True, index=True, nullable=True)
+    emirates_id_hash = Column(String, unique=True, index=True, nullable=True)
+    # ===================================================
        
     # EXISTING relationships
     prescriptions = relationship(
@@ -85,7 +102,7 @@ class Prescription(Base):
     medication = Column(String, nullable=False)
     dosage = Column(String, nullable=False)
     issued_date = Column(DateTime, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     user = relationship(
@@ -97,7 +114,7 @@ class Prescription(Base):
 class Appointment(Base):
     __tablename__ = "appointments"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     appointment_date = Column(DateTime, nullable=False)
     reason = Column(String, nullable=True)
@@ -138,6 +155,7 @@ class PatientProfile(Base):
     # General
     high_risk = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
+    deleted_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Add this after your existing classes (after PatientProfile)
@@ -146,13 +164,14 @@ class PatientConsent(Base):
     __tablename__ = "patient_consents"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     consent_type = Column(String, nullable=False)  # 'data_collection', 'data_sharing', 'research'
     consent_version = Column(String, nullable=False)  # 'v1.0'
     accepted = Column(Boolean, default=True)
     ip_address = Column(String, nullable=True)
     device_info = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Relationship
     user = relationship("User", backref="consents")

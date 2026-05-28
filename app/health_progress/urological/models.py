@@ -14,3 +14,4 @@ class UrologicalSurgeryEntry(Base):
     condition_data = Column(JSON)     # Store nested condition_data as JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     photo_urls = Column(JSON, default=list)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)

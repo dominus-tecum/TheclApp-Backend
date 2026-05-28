@@ -23,7 +23,7 @@ class MedicalRecord(Base):
     details = Column(JSON, nullable=False)  # Store structured data as JSON
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Additional fields for specific types
     lab_order_id = Column(String, nullable=True)  # For lab results
     prescription_id = Column(String, nullable=True)  # For prescriptions

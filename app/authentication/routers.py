@@ -2,15 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.models import User, PatientProfile, Organization, PatientDoctorAssignment, UserRole
+from app.models import User, PatientProfile, Organization, PatientDoctorAssignment, UserRole, PatientConsent
 from .schemas import UserRegister, UserLogin, UserRead
 from .service import create_user 
 from .auth import create_access_token, get_current_user, authenticate_user
 from jose import jwt
 from app.core.config import settings  # ✅ IMPORT SETTINGS
 from app.utils.audit import log_audit
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from app.utils.encryption import encrypt_value, hash_value
 
-
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["Authentication"])
 
@@ -43,8 +46,10 @@ def create_refresh_token(username: str, user_id: int):
 
 
 
-@router.post("/register", response_model=UserRead)
+@router.post("/register")
 def register(user: UserRegister, request: Request, db: Session = Depends(get_db)):
+    user.passport_number = user.passport_number if user.passport_number else None
+    user.emirates_id = user.emirates_id if user.emirates_id else None
     print(f"🔍 REGISTER - Full received data: {user.dict()}")
     print(f"🔍 REGISTER - organization_id: {user.organization_id}")
     print("=" * 50)
@@ -54,29 +59,136 @@ def register(user: UserRegister, request: Request, db: Session = Depends(get_db)
     print(f"   organization_id: {user.organization_id}")
     print(f"   organization_id type: {type(user.organization_id)}")
     print("=" * 50)
-
-
     print(f"🔍 REGISTER - Received: {user.dict()}")
-    
+    print("=" * 50)
+    print("🔵 REGISTER ENDPOINT - Checking for pending consents")
+    print(f"📝 Session at registration start: {dict(request.session)}")
+    pending_consent_ids = request.session.get('pending_consent_ids')
+    print(f"📝 Retrieved pending_consent_ids: {pending_consent_ids}")
+    print("=" * 50)
+    print(f"🔍 Session ID at registration: {request.session}")
+    print(f"🔍 Session keys at registration: {list(request.session.keys())}")
+
+
+        # ========== ADD PLAIN TEXT DUPLICATE CHECKS HERE ==========
+    # Check by plain text first (most reliable for existing records)
     existing_email = db.query(User).filter(User.email == user.email).first()
     if existing_email:
-        print("❌ REGISTER - Email already exists")
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    if user.passport_number:
+        existing_passport = db.query(User).filter(User.passport_number == user.passport_number).first()
+        if existing_passport:
+            raise HTTPException(status_code=400, detail="Passport number already registered")
+
+    if user.phone_number:
+        existing_phone = db.query(User).filter(User.phone_number == user.phone_number).first()
+        if existing_phone:
+            raise HTTPException(status_code=400, detail="Phone number already registered")
+
+    if user.emirates_id:
+        existing_emirates = db.query(User).filter(User.emirates_id == user.emirates_id).first()
+        if existing_emirates:
+            raise HTTPException(status_code=400, detail="Emirates ID already registered")
+    # ========== END OF PLAIN TEXT CHECKS ==========
+    
+
+    # Check duplicates - try hash first, then plain email
+    email_hash = hash_value(user.email)
+    existing_email = db.query(User).filter(User.email_hash == email_hash).first()
+
+    # If not found by hash, check by plain email (for old records)
+    if not existing_email:
+        existing_email = db.query(User).filter(User.email == user.email).first()
+
+    if existing_email:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    existing_username = db.query(User).filter(User.username == user.username).first()
-    if existing_username:
-        print("❌ REGISTER - Username already taken")
-        raise HTTPException(status_code=400, detail="Username already taken")
+    # Check passport if provided
+    if user.passport_number:
+        passport_hash = hash_value(user.passport_number)
+        existing_passport = db.query(User).filter(User.passport_hash == passport_hash).first()
+        if not existing_passport:
+            existing_passport = db.query(User).filter(User.passport_number == user.passport_number).first()
+        if existing_passport:
+            raise HTTPException(status_code=400, detail="Passport number already registered")
+    else:
+        passport_hash = None
+                
+    if user.phone_number:
+        phone_hash = hash_value(user.phone_number)
+        existing_phone = db.query(User).filter(User.phone_hash == phone_hash).first()
+        if existing_phone:
+            raise HTTPException(status_code=400, detail="Phone number already registered")
+    
+    if user.emirates_id:
+        emirates_hash = hash_value(user.emirates_id)
+        existing_emirates = db.query(User).filter(User.emirates_id_hash == emirates_hash).first()
+        if existing_emirates:
+            raise HTTPException(status_code=400, detail="Emirates ID already registered")
 
     # Verify organization exists
     org = db.query(Organization).filter(Organization.id == user.organization_id).first()
     if not org:
         raise HTTPException(status_code=400, detail="Invalid organization")
 
-    created_user = create_user(db, user, user.organization_id)
-    print(f"✅ REGISTER - User created: {created_user.id}, {created_user.email}, {created_user.username}")
-    created_user.status = 'pending'
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed_password = pwd_context.hash(user.password)
+
+    created_user = User(
+        username=user.username,
+        password_hash=hashed_password,
+        role=user.role,
+        organization_id=user.organization_id,
+        status='pending',
+        # Original fields (keep)
+        name=user.name,
+        email=user.email,
+        phone_number=user.phone_number,
+        passport_number=user.passport_number,
+        emirates_id=user.emirates_id,
+        # Encrypted fields
+        name_encrypted=encrypt_value(user.name),
+        email_encrypted=encrypt_value(user.email),
+        phone_encrypted=encrypt_value(user.phone_number),
+        passport_encrypted=encrypt_value(user.passport_number),
+        emirates_id_encrypted=encrypt_value(user.emirates_id),
+        # Hashed fields
+        email_hash=hash_value(user.email),
+        phone_hash=hash_value(user.phone_number) if user.phone_number else None,
+        passport_hash=passport_hash,
+        emirates_id_hash=hash_value(user.emirates_id) if user.emirates_id else None
+    )
+
+    
+    db.add(created_user)  # ← ADD THIS LINE
     db.commit()
+    db.refresh(created_user)  # ← ADD THIS LINE (to get the ID)
+
+        # ========== LINK PENDING CONSENTS TO NEW USER ==========
+    # After user is created, link any pending consents from the last hour
+
+    # Get consent IDs from session
+    pending_consent_ids = request.session.get('pending_consent_ids')
+    if pending_consent_ids:
+        from sqlalchemy import update
+        stmt = update(PatientConsent).where(
+            PatientConsent.id.in_(pending_consent_ids)
+        ).values(user_id=created_user.id)
+    
+        db.execute(stmt)
+        db.commit()
+        print(f"✅ Linked {len(pending_consent_ids)} pending consents to user {created_user.id}")
+    
+        # Clear the session
+        request.session.pop('pending_consent_ids', None)
+        
+        # Clear the session
+        del request.session['pending_consent']
+    # ========== END OF CONSENT LINKING ==========
+
+    print(f"✅ REGISTER - User created: {created_user.id}, {created_user.email}, {created_user.username}")
     
     # CREATE PATIENT PROFILE
     existing_patient = db.query(PatientProfile).filter(PatientProfile.user_id == created_user.id).first()
@@ -154,15 +266,20 @@ def register(user: UserRegister, request: Request, db: Session = Depends(get_db)
         new_value={"organization_id": user.organization_id, "doctor_id": user.doctor_id if user.doctor_id else None}
     )
     
-    return created_user
+    return {
+        "id": created_user.id,
+        "username": created_user.username,
+        "email": user.email,
+        "role": created_user.role.value,
+        "status": created_user.status,
+        "message": "Registration successful. Awaiting admin approval."
+    }
 
 
 @router.post("/login")
-def login(
-    user: UserLogin, 
-    request: Request,  # ← ADD THIS
-    db: Session = Depends(get_db)
-):
+@limiter.limit("5/minute")
+def login(request: Request, user: UserLogin, db: Session = Depends(get_db)):
+    
     print(f"🔍 LOGIN - Attempt: {user.email}")
     
     authenticated_user = authenticate_user(db, user.email, user.password)
@@ -399,28 +516,65 @@ class ConsentData(BaseModel):
 
 @router.post("/save-consent")
 async def save_consent(
-    consent_data: ConsentData,  # ← This makes it read from body, not query
+    consent_data: ConsentData,
     request: Request,
     db: Session = Depends(get_db)
 ):
-    from app.models import AuditLog
+    from app.models import AuditLog, PatientConsent
     from datetime import datetime
+
+    print("=" * 50)
+    print("🔵 SAVE-CONSENT ENDPOINT CALLED")
+    print(f"📝 Consent data received: {consent_data}")
+    print("=" * 50)
+    print(f"🔍 Session ID before save: {request.session}")
+    print(f"🔍 Session keys before save: {list(request.session.keys())}")
+
+    consent_mapping = {
+        "privacy_policy": "Privacy Policy",
+        "terms_of_service": "Terms of Service",
+        "data_collection": "Data Collection",
+        "medical_treatment": "Medical Treatment",
+        "emergency_contact": "Emergency Contact Sharing",
+        "telemedicine": "Telemedicine Services"
+    }
     
-    # Store in session for now (user not yet registered)
-    request.session['pending_consent'] = consent_data.dict()
+    consent_ids = []
     
-    # Log the consent action
+    # Save each accepted consent to patient_consents table
+    for consent_key, accepted in consent_data.consents.items():
+        if accepted:
+            consent = PatientConsent(
+                user_id=None,
+                consent_type=consent_mapping.get(consent_key, consent_key),
+                consent_version=consent_data.consent_version,
+                accepted=accepted,
+                ip_address=request.client.host if request.client else None,
+                device_info=consent_data.device_info,
+                created_at=datetime.now()
+            )
+            db.add(consent)
+            db.flush()  # ← ADD THIS - assigns ID to consent
+            consent_ids.append(consent.id)  # ← ADD THIS - collect the ID
+    
+    db.commit()
+    
+    # Store consent IDs in session
+    request.session['pending_consent_ids'] = consent_ids
+    print(f"✅ Stored consent_ids in session: {consent_ids}")  # ← ADD THIS
+    
+    # Log audit
     audit = AuditLog(
         action="consent_given",
         resource_type="consent_form",
-        ip_address=request.client.host,
+        ip_address=request.client.host if request.client else None,
         user_agent=consent_data.device_info,
         created_at=datetime.now()
     )
     db.add(audit)
     db.commit()
-    
-    return {"message": "Consent recorded"}
+
+    return {"message": "Consent recorded", "consent_ids": consent_ids}
 
 @router.post("/update-super-admin")
 def update_super_admin(

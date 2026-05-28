@@ -13,6 +13,7 @@ class BariatricEntry(Base):
     patient_name = Column(String(255), nullable=False)
     submission_date = Column(String(50), nullable=False)
     submitted_at = Column(DateTime)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     urgency_status = Column(String(50))
     common_data = Column(JSON)
     condition_data = Column(JSON)

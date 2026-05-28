@@ -25,6 +25,7 @@ class MensHealthIntake(Base):
     is_active = Column(Boolean, default=True)
     approved = Column(Boolean, default=False)      # ← ADD THIS LINE
     approved_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class MensHealthEntry(Base):
@@ -37,6 +38,7 @@ class MensHealthEntry(Base):
     patient_name = Column(String, nullable=False)
     submission_date = Column(Date, nullable=False, index=True)
     submitted_at = Column(DateTime, server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     
     # Which conditions were tracked this day
     conditions_selected = Column(JSON, nullable=False)
@@ -70,6 +72,7 @@ class MensHealthPhoto(Base):
     photo_metadata = Column(JSON, nullable=True)  # Stores length, girth, curvature angle
     consent_shared = Column(Boolean, default=False)
     order_index = Column(Integer, default=0)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
 
@@ -83,3 +86,4 @@ class MensHealthCalibration(Base):
     card_type = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     calibrated_at = Column(DateTime, server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)

@@ -24,5 +24,5 @@ class HypertensionEntry(Base):
     notes = Column(String, nullable=True)
     status = Column(String, nullable=True)
     condition_type = Column(String, default="hypertension")
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

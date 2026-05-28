@@ -26,6 +26,8 @@ def authenticate_user(db: Session, email: str, password: str):
     user = db.query(User).filter(User.email == email).first()
     if not user:
         return False
+    if user.deleted_at is not None:  # ← ADD THIS
+        return False                  # ← ADD THIS
     if not verify_password(password, user.password_hash):
         return False
     return user
@@ -70,6 +72,21 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     if user is None:
         print(f"❌ [AUTH] User not found: {username}")
         raise credentials_exception
+
+
+        # ========== ADD THIS BLOCK ==========
+    if user.deleted_at is not None:
+        print(f"❌ [AUTH] Account deleted: {username}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been deactivated. Please contact support."
+        )
+    # ===================================
+
+
+
+
+
     
     # CONVERT TO DICTIONARY - THIS IS CRITICAL
     user_dict = {

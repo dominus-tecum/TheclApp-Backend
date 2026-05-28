@@ -255,8 +255,15 @@
                             <div class="form-group"><label>Email</label><input type="email" id="newAdminEmail" placeholder="admin@hospital.com"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>Password</label><input type="text" id="newAdminPassword" value="Admin123!" readonly></div>
-                        </div>
+    <div class="form-group">
+        <label>Password</label>
+        <div style="position: relative;">
+            <input type="password" id="newAdminPassword" style="padding-right: 45px;" placeholder="Enter password for clinic admin">
+            <span onclick="toggleAdminPassword()" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #64748b; font-size: 20px;">👁️</span>
+        </div>
+    </div>
+</div>
+
                         <button onclick="createClinicAdmin()">➕ Create Clinic Admin</button>
                         <div id="adminMessage" class="alert hidden" style="margin-top: 16px;"></div>
                     </div>
@@ -331,8 +338,8 @@
 
                 // ===== API BASE URL CONFIGURATION =====
         // Use Render for production, Ngrok for local testing
-        const BASE_URL = 'https://theclapp-backend.onrender.com';  // Render (production)
-        // const BASE_URL = 'https://your-ngrok-url.ngrok-free.app';  // Ngrok (local testing - uncomment when needed)
+        //const BASE_URL = 'https://theclapp-backend.onrender.com';  // Render (production)
+        const BASE_URL = 'https://f630-94-203-113-234.ngrok-free.app';  // Ngrok (local testing - uncomment when needed)
         
         // =====================================
 
@@ -714,6 +721,29 @@
                 alert("❌ Network error: " + err.message);
             });
         }
+
+        function toggleAdminPassword() {
+    const passwordInput = document.getElementById('newAdminPassword');
+    const eyeIcon = event.target;
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        eyeIcon.textContent = '🙈';
+    } else {
+        passwordInput.type = 'password';
+        eyeIcon.textContent = '👁️';
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
         // ========== END OF CHANGE PASSWORD FUNCTION ==========
 
         function closeEditModal() { document.getElementById('editModal').style.display = 'none'; document.getElementById('editMessage').classList.add('hidden'); }

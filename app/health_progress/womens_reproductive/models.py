@@ -22,6 +22,7 @@ class WomensHealthEntry(Base):
     organization_id = Column(Integer, nullable=False, default=1)
     submission_date = Column(Date, nullable=False, index=True)
     submitted_at = Column(DateTime, server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     
     # Which conditions were tracked this day
     conditions_selected = Column(JSON, nullable=False)  # ['vaginismus', 'menopause']
@@ -56,6 +57,7 @@ class WomensHealthPhoto(Base):
     taken_at = Column(DateTime, server_default=func.now())
     notes = Column(Text, nullable=True)
     order_index = Column(Integer, default=0)  # For timeline ordering
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 class WomensHealthIntake(Base):
     """Questionnaire intake answers - saved once per patient"""
@@ -73,4 +75,5 @@ class WomensHealthIntake(Base):
     # ✅ ADD THIS LINE
     approved = Column(Boolean, default=False)  # Clinic approval status
     approved_by = Column(Integer, nullable=True)  # Doctor ID who approved
-    approved_at = Column(DateTime, nullable=True)  # When approved    
+    approved_at = Column(DateTime, nullable=True)  # When approved
+    deleted_at = Column(DateTime(timezone=True), nullable=True)    

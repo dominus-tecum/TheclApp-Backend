@@ -25,5 +25,5 @@ class DiabetesEntry(Base):
     notes = Column(String, nullable=True)
     status = Column(String, nullable=True)
     condition_type = Column(String, default="diabetes")
-    
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

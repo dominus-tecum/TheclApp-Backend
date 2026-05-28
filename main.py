@@ -28,6 +28,9 @@ from app.health_progress.kidney.models import KidneyEntry
 from app.health_progress.cancer.models import CancerEntry
 from app.health_progress.kidney.routers import router as kidney_router
 from app.health_progress.cancer.routers import router as cancer_router
+from app.export.routers import router as export_router
+from app.middleware.sanitizer import SanitizationMiddleware
+from app.core.config import settings
 #from app.skin_analysis.skin_prediction import router as skin_analysis_router
 from app.prenatal.models import PrenatalEntry
 from app.postnatal.models import PostnatalEntry, PostnatalProfile  # ✅ Only once
@@ -46,6 +49,9 @@ from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File
 from app.health_progress.lifelong.routers import router as lifelong_router
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from app.utils.audit import log_audit
 from app.routers import router as main_router
 from app.health_progress.womens_reproductive.models import WomensHealthIntake, WomensHealthEntry, WomensHealthPhoto
@@ -283,8 +289,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from starlette.middleware.sessions import SessionMiddleware
-app.add_middleware(SessionMiddleware, secret_key="your-secret-key-change-this-in-production")
 
 # Create static directories
 os.makedirs("static", exist_ok=True)
@@ -643,7 +647,7 @@ async def serve_admin_dashboard(
 # Include all your existing routers (no debug prints)
 
 app.include_router(main_router, prefix="/api")
-app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(progress_router)
@@ -665,7 +669,13 @@ app.include_router(lifelong_router, prefix="/api/health-progress", tags=["Health
 app.include_router(diabetes_router, prefix="/api/health-progress/diabetes", tags=["diabetes"])
 app.include_router(hypertension_router, prefix="/api/health-progress/hypertension", tags=["hypertension"])
 app.include_router(organization_router)
+app.include_router(export_router)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SanitizationMiddleware)
 #app.include_router(skin_analysis_router, prefix="/api/skin-analysis", tags=["Skin Analysis"]) 
+app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 app.include_router(heart_router, prefix="/api/health-progress/heart", tags=["Heart Disease"])
 app.include_router(kidney_router, prefix="/api/health-progress/kidney", tags=["Kidney Disease"])
 app.include_router(cancer_router, prefix="/api/health-progress/cancer", tags=["Cancer"])
