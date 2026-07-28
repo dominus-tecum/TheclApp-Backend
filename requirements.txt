@@ -19,6 +19,7 @@ itsdangerous==2.2.0
 jmespath==1.0.1
 langdetect==1.0.9
 openai==1.30.0
+opencv-python==4.8.1.78
 passlib==1.7.4
 phonenumbers==8.13.27
 pyasn1==0.6.1
