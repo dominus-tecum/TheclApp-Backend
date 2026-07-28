@@ -934,13 +934,13 @@ def get_all_entries(
     patient_id: Optional[int] = None,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
     """Get all entries - admin sees all, patient sees their own"""
     
     # ← ADDED: Super admin check
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Access denied")
     
     query = db.query(WomensHealthEntry).filter(
@@ -948,10 +948,10 @@ def get_all_entries(
     )
     
     # ← ADDED: Doctor filter
-    if current_user.get('role') == 'doctor':
+    if current_user.role.value == 'doctor':
         from app.models import PatientDoctorAssignment
         assignments = db.query(PatientDoctorAssignment.patient_id).filter(
-            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.doctor_id == current_user.id,
             PatientDoctorAssignment.end_date == None
         ).all()
         patient_ids = [a[0] for a in assignments]
@@ -961,11 +961,11 @@ def get_all_entries(
             query = query.filter(False)
     
     # Filter by role (YOUR EXISTING CODE - KEPT AS IS)
-    if current_user.get('role') == 'admin':  # ← CHANGED: .role.value to .get('role')
+    if current_user.role.value == 'admin':  # ← CHANGED: .role.value to .get('role')
         if patient_id:
             query = query.filter(WomensHealthEntry.patient_id == patient_id)
     else:
-        query = query.filter(WomensHealthEntry.patient_id == current_user.get('id'))  # ← CHANGED: .id to .get('id')
+        query = query.filter(WomensHealthEntry.patient_id == current_user.id)  # ← CHANGED: .id to .get('id')
     
     entries = query.order_by(WomensHealthEntry.submission_date.desc()).all()
     
@@ -988,12 +988,12 @@ def get_all_entries(
     if request:
         log_audit(
             db=db,
-            user_id=current_user.get('id'),
-            username=current_user.get('username'),
-            user_role=current_user.get('role'),
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
             action='READ',
             resource_type='WOMENS_HEALTH_ENTRY',
-            patient_id=patient_id or current_user.get('id'),
+            patient_id=patient_id or current_user.id,
             status='success',
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent')
@@ -1121,7 +1121,7 @@ async def approve_womens_health(
         status='success',
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
-        details={"approved": True}
+        
     )
     
     return {"approved": True, "message": "Patient approved for tracking"}
@@ -1225,7 +1225,7 @@ async def get_pending_users(
         status='success',
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
-        details={"pending_count": len(result)}
+        
     )
     
     return result

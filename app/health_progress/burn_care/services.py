@@ -7,6 +7,7 @@ class BurnCareService:
     
     @staticmethod
     def create_burn_care_entry(db: Session, entry: BurnCareCreate):
+        # TEMPORARILY COMMENTED OUT FOR TESTING
         # Check if entry already exists
         existing_entry = BurnCareService.check_existing_entry(db, entry.patient_id, entry.submission_date)
         
@@ -43,7 +44,7 @@ class BurnCareService:
             db.refresh(existing_entry)
             return existing_entry
         else:
-            # Create new entry
+            # Create new entry (ALWAYS CREATE NEW FOR TESTING)
             db_entry = BurnCareEntry(
                 patient_id=entry.patient_id,
                 patient_name=entry.patient_name,

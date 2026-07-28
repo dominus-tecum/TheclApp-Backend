@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from . import services, schemas
 from app.dependencies import get_current_user  # ← ADD THIS
-from app.models import User  # ← ADD THIS
+from app.models import User, UserRole, PatientDoctorAssignment
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.utils.audit import log_audit
 
@@ -24,6 +24,7 @@ async def create_orthopedic_entry(
             raise HTTPException(status_code=403, detail="Not authorized")
         
         print("📥 ORTHOPEDIC Received POST data:", entry_data.dict())
+       
         
         # Check for existing entry
         existing_entry = orthopedic_service.get_entry_by_patient_and_date(
@@ -54,7 +55,8 @@ async def create_orthopedic_entry(
             user_agent=request.headers.get('user-agent'),
             new_value=entry_data.dict()
         )
-        
+
+            
         return schemas.OrthopedicEntryResponse(
             id=db_entry.id,
             patient_id=db_entry.patient_id,
@@ -71,15 +73,35 @@ async def create_orthopedic_entry(
     except Exception as e:
         print("❌ ORTHOPEDIC POST Error details:", str(e))
         raise HTTPException(status_code=500, detail=f"Failed to create/update orthopedic progress entry: {str(e)}")
+
+
+
 @router.get("/entries")
 async def get_all_orthopedic_entries(
-    request: Request,  # ← ADD THIS
+    request: Request,
     current_user: User = Depends(get_current_user),
     orthopedic_service: services.OrthopedicProgressService = Depends(get_orthopedic_service)
 ):
     try:
         entries = orthopedic_service.get_all_entries()
-        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        
+        # ========== ROLE-BASED ACCESS CONTROL ==========
+        if current_user.role == UserRole.DOCTOR:
+            from app.models import PatientDoctorAssignment
+            assignments = orthopedic_service.db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.id,
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            patient_ids = [a[0] for a in assignments]
+            
+            if not patient_ids:
+                entries = []
+            else:
+                entries = [e for e in entries if int(e.patient_id) in patient_ids]
+                
+        elif current_user.role == UserRole.PATIENT:
+            entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        # ========================================================
         
         # ✅ ADD AUDIT LOG
         log_audit(
@@ -118,7 +140,6 @@ async def get_all_orthopedic_entries(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving orthopedic entries: {str(e)}")
-
 
 @router.get("/entries/{patient_id}/{date}")
 async def check_orthopedic_entry(

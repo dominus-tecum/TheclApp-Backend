@@ -479,7 +479,7 @@ def get_current_user_info(
     current_user: dict = Depends(get_current_user),  # ← CHANGE User to dict
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.id == current_user.get('id')).first()  # ← use .get('id')
+    user = db.query(User).filter(User.id == current_user.id).first()
     
     # ✅ AUDIT LOG
     log_audit(
@@ -590,11 +590,11 @@ def update_super_admin(
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     
     # SECURITY: Only existing super admin can access
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     # Get the super admin user (usually the one making the request)
-    admin_user = db.query(User).filter(User.id == current_user.get('id')).first()
+    admin_user = db.query(User).filter(User.id == current_user.id).first()
     
     if not admin_user:
         raise HTTPException(status_code=404, detail="Admin user not found")
@@ -651,7 +651,7 @@ def create_super_admin_temp(
         username=username,
         email=email,
         password_hash=hashed,
-        role=UserRole.ADMIN,
+        role='admin',
         is_super_admin=True,
         organization_id=None,  # ← CHANGED from 1 to None
         status='approved',

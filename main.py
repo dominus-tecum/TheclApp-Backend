@@ -1,3 +1,4 @@
+from app.pharmacy.models import Pharmacy, PharmacyMedication
 from app.database import engine, Base
 from app import models
 from fastapi import FastAPI, Request
@@ -8,6 +9,7 @@ import os
 from app.database import engine, Base
 from sqlalchemy import inspect
 from app.health_progress.urological.models import UrologicalSurgeryEntry
+from app.pharmacy.routers import router as pharmacy_router 
 from app.health_progress.gynecologic.models import GynecologicSurgeryEntry
 from app.models import User
 from app.medical_record.models import MedicalRecord
@@ -32,6 +34,7 @@ from app.export.routers import router as export_router
 from app.middleware.sanitizer import SanitizationMiddleware
 from app.core.config import settings
 #from app.skin_analysis.skin_prediction import router as skin_analysis_router
+from app.prescription_voucher import router as prescription_voucher_router
 from app.prenatal.models import PrenatalEntry
 from app.postnatal.models import PostnatalEntry, PostnatalProfile  # ✅ Only once
 from app.postnatal.routers import router as postnatal_router  # ✅ Only once
@@ -58,7 +61,8 @@ from app.health_progress.womens_reproductive.models import WomensHealthIntake, W
 from app.health_progress.womens_reproductive.routers import router as womens_health_router
 from app.health_progress.mens_sexual_health.models import MensHealthIntake, MensHealthEntry, MensHealthPhoto
 from app.health_progress.mens_sexual_health.routers import router as mens_health_router
-from app.models import User
+#from app.models import 
+
 import shutil
 import uuid
 
@@ -278,7 +282,15 @@ from app.health_progress.cesarean.routers import router as cesarean_router
 from app.health_progress.gynecologic.routers import router as gynecologic_router
 from app.health_progress.orthopedic.routers import router as orthopedic_router
 from app.health_progress.urological.routers import router as urological_router
-from app.health_progress.abdominal.models import AbdominalEntry
+from app.health_progress.abdominal.models import AbdominalEntry 
+
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=settings.JWT_SECRET_KEY,
+    https_only=True,
+    same_site="none",
+    max_age=3600
+)
 
 # CORS middleware for ngrok
 app.add_middleware(
@@ -608,7 +620,7 @@ async def serve_admin_dashboard(
     request: Request,
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "admin":
+    if current_user.role.value != "admin":
         db = SessionLocal()
         log_audit(
             db=db,
@@ -646,11 +658,12 @@ async def serve_admin_dashboard(
 
 # Include all your existing routers (no debug prints)
 
-app.include_router(main_router, prefix="/api")
+
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(progress_router)
+app.include_router(prescription_voucher_router)
 app.include_router(chatbot_router, prefix="/api/chatbot", tags=["Chatbot"])
 app.include_router(transcription_router, prefix="/api/telemedicine", tags=["Telemedicine"])
 app.include_router(health_tracker_router, prefix="/api/health-tracker", tags=["Health Tracker"])
@@ -670,12 +683,13 @@ app.include_router(diabetes_router, prefix="/api/health-progress/diabetes", tags
 app.include_router(hypertension_router, prefix="/api/health-progress/hypertension", tags=["hypertension"])
 app.include_router(organization_router)
 app.include_router(export_router)
+app.include_router(pharmacy_router, prefix="/api/pharmacy")
+app.include_router(pharmacy_router, prefix="/api/auth")
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SanitizationMiddleware)
 #app.include_router(skin_analysis_router, prefix="/api/skin-analysis", tags=["Skin Analysis"]) 
-app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 app.include_router(heart_router, prefix="/api/health-progress/heart", tags=["Heart Disease"])
 app.include_router(kidney_router, prefix="/api/health-progress/kidney", tags=["Kidney Disease"])
 app.include_router(cancer_router, prefix="/api/health-progress/cancer", tags=["Cancer"])
@@ -686,6 +700,31 @@ app.include_router(security_router, tags=["Security"])
 app.include_router(lifelong_router, prefix="/api")
 app.include_router(womens_health_router, prefix="/api/womens-reproductive-health", tags=["Women's Reproductive Health"])
 app.include_router(mens_health_router, prefix="/api/mens-sexual-health", tags=["Men's Sexual Health"])
+app.include_router(main_router, prefix="/api")
+app.include_router(mens_health_router, prefix="/api/mens-health", tags=["Men's Health"])
+
+# After ALL app.include_router lines, add this:
+
+print("\n" + "=" * 60)
+print("🔍 ALL REGISTERED ROUTES (FINAL CHECK):")
+for route in app.routes:
+    if hasattr(route, "path"):
+        if "pharmacy" in route.path or "admin" in route.path:
+            print(f"   ✅ {route.path}")
+print("=" * 60 + "\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Add this RIGHT BEFORE the last line of main.py
 
@@ -694,12 +733,21 @@ async def startup_event():
     print("Healthcare Management API starting up...")
     
     # Print all registered routes
-    print("\n📋 REGISTERED ROUTES:")
+    print("\n📋 ALL REGISTERED ROUTES:")
     for route in app.routes:
         if hasattr(route, "path"):
             print(f"  {route.path}")
+    
+    # Specifically check for pharmacy admin endpoint
+    print("\n🔍 SEARCHING FOR PHARMACY ADMIN ENDPOINT:")
+    found = False
+    for route in app.routes:
+        if hasattr(route, "path") and "pharmacy-admin" in route.path:
+            print(f"   ✅ FOUND: {route.path}")
+            found = True
+    if not found:
+        print("   ❌ NOT FOUND: /api/auth/admin/pharmacy-admins")
     print()
-
 
 
 # Optional events (keep these)
@@ -710,3 +758,12 @@ async def shutdown_event():
     print("Healthcare Management API shutting down...")
 
 
+@app.get("/check-session")
+async def check_session(request: Request):
+    return {
+        "session_exists": bool(request.session),
+        "session_keys": list(request.session.keys()),
+        "session_data": dict(request.session),
+        "cookies": request.cookies,
+        "has_session_cookie": "session" in request.cookies
+    }

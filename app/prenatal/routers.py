@@ -140,7 +140,7 @@ async def get_all_prenatal_entries(
             raise HTTPException(status_code=403, detail="Access denied")
         
         # ← ADDED: Doctor filter
-        if current_user.role == UserRole.DOCTOR:
+        if current_user.role.value == UserRole.DOCTOR.value:
             from app.models import PatientDoctorAssignment
             assignments = db.query(PatientDoctorAssignment.patient_id).filter(
                 PatientDoctorAssignment.doctor_id == current_user.id,

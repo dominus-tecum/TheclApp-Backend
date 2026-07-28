@@ -9,22 +9,22 @@ class LifelongService:
 
     def create_or_update_entry(self, entry_data: Dict[str, Any], organization_id: int) -> LifelongEntry:
         # Check if entry exists for this patient and date
-        existing = self.db.query(LifelongEntry).filter(
-            LifelongEntry.patient_id == entry_data.get('patient_id'),
-            LifelongEntry.submission_date == entry_data.get('submission_date'),
-            LifelongEntry.organization_id == organization_id
-        ).first()
+        #existing = self.db.query(LifelongEntry).filter(
+        #    LifelongEntry.patient_id == entry_data.get('patient_id'),
+        #    LifelongEntry.submission_date == entry_data.get('submission_date'),
+        #    LifelongEntry.organization_id == organization_id
+        #).first()
         
-        if existing:
+        #if existing:
             # Update existing
-            existing.common_data = entry_data.get('common_data', {})
-            existing.conditions_data = entry_data.get('conditions_data', {})
-            existing.status = entry_data.get('status', 'good')
-            existing.updated_at = datetime.utcnow()
-            self.db.commit()
-            self.db.refresh(existing)
-            return existing
-        else:
+        #    existing.common_data = entry_data.get('common_data', {})
+        #    existing.conditions_data = entry_data.get('conditions_data', {})
+        #    existing.status = entry_data.get('status', 'good')
+        #    existing.updated_at = datetime.utcnow()
+        #    self.db.commit()
+        #    self.db.refresh(existing)
+        #    return existing
+        #else:
             # Create new
             db_entry = LifelongEntry(
                 patient_id=entry_data.get('patient_id'),

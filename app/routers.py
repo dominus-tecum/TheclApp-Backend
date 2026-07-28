@@ -10,6 +10,8 @@ from app.models import User, UserRole, PatientDoctorAssignment, Organization, Au
 from app.utils.audit import log_audit
 from app.database import get_db
 import os
+import base64
+from fastapi import Form, UploadFile, File
 
 router = APIRouter(dependencies=[])        #router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -82,7 +84,7 @@ def register(user: schemas.UserCreate, request: Request, db: Session = Depends(d
 def search_patients(
     q: str = "",
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     query = db.query(models.User).filter(models.User.role == UserRole.PATIENT)
     
@@ -111,7 +113,7 @@ def create_medical_record(
     record: MedicalRecordCreate,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     patient = db.query(models.User).filter(
         models.User.id == record.patient_id, 
@@ -121,7 +123,7 @@ def create_medical_record(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     
-    doctor = db.query(models.User).filter(models.User.id == current_user.get('id')).first()
+    doctor = db.query(models.User).filter(models.User.id == current_user.id).first()
     
     db_record = models.MedicalRecord(
         patient_id=record.patient_id,
@@ -141,9 +143,9 @@ def create_medical_record(
 
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='CREATE',
         resource_type='MEDICAL_RECORD',
         resource_id=db_record.id,
@@ -160,7 +162,7 @@ def get_patient_medical_records(
     patient_id: int,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     patient = db.query(models.User).filter(models.User.id == patient_id, models.User.role == UserRole.PATIENT).first()
     if not patient:
@@ -172,9 +174,9 @@ def get_patient_medical_records(
 
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='MEDICAL_RECORD',
         patient_id=patient_id,
@@ -198,7 +200,7 @@ def delete_medical_record(
     record_id: int,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     record = db.query(models.MedicalRecord).filter(models.MedicalRecord.id == record_id).first()
     if not record:
@@ -213,9 +215,9 @@ def delete_medical_record(
 
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='DELETE',
         resource_type='MEDICAL_RECORD',
         resource_id=record_id,
@@ -233,15 +235,15 @@ def search_doctors(
     organization_id: int = None,
     request: Request = None,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     query = db.query(models.User).filter(models.User.role == UserRole.DOCTOR)
     
     # Filter by organization if provided
     if organization_id:
         query = query.filter(models.User.organization_id == organization_id)
-    elif current_user.get('organization_id'):
-        query = query.filter(models.User.organization_id == current_user.get('organization_id'))
+    elif current_user.organization_id:
+        query = query.filter(models.User.organization_id == current_user.organization_id)
     
     if q and len(q) >= 2:
         query = query.filter(
@@ -254,9 +256,9 @@ def search_doctors(
     # ✅ AUDIT LOG
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='DOCTORS_SEARCH',
         status='success',
@@ -264,7 +266,7 @@ def search_doctors(
         user_agent=request.headers.get('user-agent') if request else None,
         new_value={
             "search_term": q,
-            "organization_id": organization_id or current_user.get('organization_id'),
+            "organization_id": organization_id or current_user.organization_id,
             "results_count": len(doctors)
         }
     )
@@ -281,7 +283,8 @@ def search_doctors(
                 "is_active": d.is_active,
                 "description": d.description,
                 "education": d.education,
-                "experience_years": d.experience_years
+                "experience_years": d.experience_years,
+                "profile_image": base64.b64encode(d.profile_image).decode('utf-8') if d.profile_image else None
             }
             for d in doctors
         ]
@@ -291,7 +294,7 @@ def search_doctors(
 def get_patient_current_doctor(
     patient_id: int,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     assignment = db.query(PatientDoctorAssignment).filter(
         PatientDoctorAssignment.patient_id == patient_id,
@@ -319,7 +322,7 @@ def assign_doctor_to_patient(
     request: Request,
     reason: str = None,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     current = db.query(PatientDoctorAssignment).filter(
         PatientDoctorAssignment.patient_id == patient_id,
@@ -344,9 +347,9 @@ def assign_doctor_to_patient(
 
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='ASSIGN',
         resource_type='DOCTOR_ASSIGNMENT',
         resource_id=new_assignment.id,
@@ -362,7 +365,7 @@ def assign_doctor_to_patient(
 def get_doctor_details(
     doctor_id: int,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     doctor = db.query(User).filter(
         User.id == doctor_id,
@@ -381,7 +384,7 @@ def get_doctor_details(
             "department": doctor.department,
             "phone_number": doctor.phone_number,
             "is_active": doctor.is_active,
-            "profile_image": doctor.profile_image,
+            "profile_image": base64.b64encode(doctor.profile_image).decode('utf-8') if doctor.profile_image else None,
             "description": doctor.description,
             "education": doctor.education,
             "experience_years": doctor.experience_years
@@ -393,9 +396,9 @@ def create_doctor_profile(
     doctor_data: dict,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
     existing = db.query(models.User).filter(models.User.email == doctor_data.get('email')).first()
@@ -433,9 +436,9 @@ def create_doctor_profile(
 
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='CREATE',
         resource_type='DOCTOR',
         resource_id=new_user.id,
@@ -447,45 +450,94 @@ def create_doctor_profile(
     return {"message": "Doctor created successfully", "id": new_user.id}
 
 @router.put("/users/{user_id}")
-def update_user(
+async def update_user(
     user_id: int,
-    user_data: dict,
-    request: Request,
+    name: str = Form(None),
+    email: str = Form(None),
+    phone_number: str = Form(None),
+    specialization: str = Form(None),
+    department: str = Form(None),
+    experience_years: int = Form(None),
+    education: str = Form(None),
+    description: str = Form(None),
+    is_active: bool = Form(None),
+    profile_image: UploadFile = File(None),
+    request: Request = None,
     db: Session = Depends(database.get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    allowed_fields = ['name', 'email', 'phone_number', 'specialization', 'department', 
-                      'description', 'education', 'experience_years', 'is_active']
+    # Track changes for audit log
+    changes = {}
     
-    for field in allowed_fields:
-        if field in user_data:
-            setattr(user, field, user_data[field])
+    # Update text fields
+    if name is not None and name != user.name:
+        changes['name'] = {'old': user.name, 'new': name}
+        user.name = name
+    if email is not None and email != user.email:
+        changes['email'] = {'old': user.email, 'new': email}
+        user.email = email
+    if phone_number is not None and phone_number != user.phone_number:
+        changes['phone_number'] = {'old': user.phone_number, 'new': phone_number}
+        user.phone_number = phone_number
+    if specialization is not None and specialization != user.specialization:
+        changes['specialization'] = {'old': user.specialization, 'new': specialization}
+        user.specialization = specialization
+    if department is not None and department != user.department:
+        changes['department'] = {'old': user.department, 'new': department}
+        user.department = department
+    if experience_years is not None and experience_years != user.experience_years:
+        changes['experience_years'] = {'old': user.experience_years, 'new': experience_years}
+        user.experience_years = experience_years
+    if education is not None and education != user.education:
+        changes['education'] = {'old': user.education, 'new': education}
+        user.education = education
+    if description is not None and description != user.description:
+        changes['description'] = {'old': user.description, 'new': description}
+        user.description = description
+    if is_active is not None and is_active != user.is_active:
+        changes['is_active'] = {'old': user.is_active, 'new': is_active}
+        user.is_active = is_active
+    
+    # Handle photo
+    photo_updated = False
+    if profile_image:
+        image_bytes = await profile_image.read()
+        if image_bytes != user.profile_image:
+            changes['profile_image'] = {'old': 'previous image', 'new': 'new image uploaded'}
+            user.profile_image = image_bytes
+            photo_updated = True
+    
+    if not changes and not photo_updated:
+        return {"message": "No changes made", "id": user.id}
     
     db.commit()
     db.refresh(user)
     
+    # Audit log
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='UPDATE',
         resource_type='USER',
         resource_id=user_id,
         patient_id=user_id if user.role == UserRole.PATIENT else None,
         status='success',
-        ip_address=request.client.host,
-        user_agent=request.headers.get('user-agent')
+        ip_address=request.client.host if request else None,
+        user_agent=request.headers.get('user-agent') if request else None,
+        new_value=changes
     )
     
-    return user
+    return {"message": "User updated successfully", "id": user.id, "changes": changes}
+
 
 # ========== ADMIN MANAGEMENT ENDPOINTS ==========
 
@@ -727,10 +779,10 @@ def list_all_admins(
 @router.get("/admin/stats")
 async def get_system_stats(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     stats = {
@@ -744,9 +796,9 @@ async def get_system_stats(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='SYSTEM_STATS',
         status='success',
@@ -759,10 +811,10 @@ async def get_system_stats(
 @router.get("/admin/all-users")
 async def get_all_users_admin(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     users = db.query(User).all()
@@ -782,9 +834,9 @@ async def get_all_users_admin(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='ALL_USERS',
         status='success',
@@ -797,10 +849,10 @@ async def get_all_users_admin(
 @router.get("/admin/clinic-admins")
 async def get_clinic_admins(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     admins = db.query(User).filter(User.role == UserRole.ADMIN, User.is_super_admin == False).all()
@@ -819,9 +871,9 @@ async def get_clinic_admins(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='CLINIC_ADMINS',
         status='success',
@@ -835,10 +887,10 @@ async def get_clinic_admins(
 async def create_clinic_admin(
     data: dict,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     existing = db.query(User).filter(User.email == data.get('email')).first()
@@ -864,9 +916,9 @@ async def create_clinic_admin(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='CREATE',
         resource_type='CLINIC_ADMIN',
         resource_id=new_admin.id,
@@ -882,10 +934,10 @@ async def reset_user_password(
     user_id: int,
     data: dict,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     user = db.query(User).filter(User.id == user_id).first()
@@ -897,9 +949,9 @@ async def reset_user_password(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='UPDATE',
         resource_type='USER_PASSWORD',
         resource_id=user_id,
@@ -914,17 +966,17 @@ async def reset_user_password(
 async def delete_user_by_admin(
     user_id: int,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if user.id == current_user.get('id'):
+    if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     
     deleted_email = user.email
@@ -935,9 +987,9 @@ async def delete_user_by_admin(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='DELETE',
         resource_type='USER',
         resource_id=user_id,
@@ -954,10 +1006,10 @@ async def get_audit_logs(
     user: str = None,
     action: str = None,
     request: Request = None,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not current_user.get('is_super_admin'):
+    if not current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Super admin only")
     
     query = db.query(AuditLog)
@@ -970,9 +1022,9 @@ async def get_audit_logs(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='AUDIT_LOGS',
         status='success',
@@ -1020,8 +1072,45 @@ def get_doctors_by_organization(
                 "specialization": d.specialization,
                 "department": d.department,
                 "experience_years": d.experience_years,
-                "profile_image": d.profile_image
+                "profile_image": base64.b64encode(d.profile_image).decode('utf-8') if d.profile_image else None,
             }
             for d in doctors
         ]
-    }    
+    }
+
+@router.get("/doctors/{doctor_id}/patients")
+async def get_doctor_patients(
+    doctor_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.id != doctor_id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Get active assignments
+    assignments = db.query(PatientDoctorAssignment).filter(
+        PatientDoctorAssignment.doctor_id == doctor_id,
+        PatientDoctorAssignment.end_date == None
+    ).all()
+    
+    patient_ids = [a.patient_id for a in assignments]
+    
+    if not patient_ids:
+        return {"patients": []}
+    
+    patients = db.query(User).filter(
+        User.id.in_(patient_ids),
+        User.role == UserRole.PATIENT
+    ).all()
+    
+    return {
+        "patients": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "email": p.email,
+                "phone_number": p.phone_number
+            }
+            for p in patients
+        ]
+    }        

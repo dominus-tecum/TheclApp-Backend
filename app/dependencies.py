@@ -99,24 +99,24 @@ def get_visible_patient_ids(current_user: dict, db: Session):
     from app.models import PatientDoctorAssignment
     
     # Super admin cannot see patient data
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         return []
     
     # Clinic admin sees all patients in their organization
-    if current_user.get('role') == 'admin':
+    if current_user.role.value == 'admin':
         return None  # None means "all patients in org"
     
     # Doctor sees only assigned patients
-    if current_user.get('role') == 'doctor':
+    if current_user.role.value == 'doctor':
         assignments = db.query(PatientDoctorAssignment.patient_id).filter(
-            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.doctor_id == current_user.id,
             PatientDoctorAssignment.end_date == None
         ).all()
         return [a[0] for a in assignments]  # Returns list of patient IDs, empty list if none
     
     # Patients see only themselves (will implement later)
-    if current_user.get('role') == 'patient':
-        return [current_user.get('id')]
+    if current_user.role.value == 'patient':
+        return [current_user.id]
     
     # Default: no access
     return []    

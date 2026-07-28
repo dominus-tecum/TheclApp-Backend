@@ -57,7 +57,7 @@ async def get_all_bariatric_entries(
 ):
     try:
         entries = bariatric_service.get_all_entries()
-        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
         
         # ✅ ADD AUDIT LOG
         log_audit(

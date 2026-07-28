@@ -12,6 +12,7 @@ class UserRole(enum.Enum):
     NURSE = "nurse"      
     STAFF = "staff"      
     ADMIN = "admin"
+    PHARMACY = "pharmacy"
 
 class User(Base):
     __tablename__ = "users"
@@ -20,7 +21,8 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.PATIENT, nullable=False)
+    role = Column(Enum(UserRole, values_callable=lambda x: [e.value for e in x]), default=UserRole.PATIENT, nullable=False)
+    pharmacy_id = Column(Integer, ForeignKey("pharmacies.id"), nullable=True)
     organization = relationship("Organization", backref="users")
     
     # COMMON FIELDS FOR ALL USERS
@@ -39,7 +41,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_super_admin = Column(Boolean, default=False)
 
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, default=1)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     organization = relationship("Organization", backref="users")
 
         
@@ -95,6 +97,8 @@ class User(Base):
     
     def is_patient(self):
         return self.role == UserRole.PATIENT
+
+    pharmacy = relationship("Pharmacy", back_populates="users")    
 
 class Prescription(Base):
     __tablename__ = "prescriptions"
@@ -203,31 +207,6 @@ class AuditLog(Base):
 
     # Add this AFTER the AuditLog class (after its closing brace)
 
-class MedicalRecord(Base):
-    __tablename__ = "medical_records"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    patient_name = Column(String, nullable=False)
-    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    doctor_name = Column(String, nullable=True)
-    
-    # Record Information
-    record_type = Column(String, nullable=False)  # 'lab_result', 'prescription', 'medical_history'
-    title = Column(String, nullable=False)
-    record_date = Column(String(10), nullable=False)  # YYYY-MM-DD
-    status = Column(String, default='active')
-    
-    # Detailed data stored as JSON
-    details = Column(JSON, default=dict)
-    
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), default=datetime.now)
-    updated_at = Column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)
-    
-    # Relationships
-    patient = relationship("User", foreign_keys=[patient_id], backref="medical_records_as_patient")
-    doctor = relationship("User", foreign_keys=[doctor_id], backref="medical_records_as_doctor")
 
 class PatientDoctorAssignment(Base):
     __tablename__ = "patient_doctor_assignments"
@@ -273,3 +252,45 @@ class Organization(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     is_active = Column(Boolean, default=True)
     allowed_modules = Column(JSON, default=list)  # ← ADD THIS
+    type = Column(String, default="hospital")
+
+# ========== PRESCRIPTION VOUCHER SYSTEM ==========
+# Add this AFTER your existing Organization class
+
+class PrescriptionVoucher(Base):
+    __tablename__ = "prescriptions_voucher"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    prescription_code = Column(String, unique=True, nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    medication_name = Column(String, nullable=False)
+    strength = Column(String, nullable=True)
+    dosage = Column(String, nullable=True)
+    quantity = Column(Integer, default=1)
+    status = Column(String, default="active")  # active, shared, sold, expired
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    medical_record_id = Column(String, nullable=True)
+    
+    # Relationships
+    patient = relationship("User", foreign_keys=[patient_id])
+    doctor = relationship("User", foreign_keys=[doctor_id])
+
+
+class PrescriptionShare(Base):
+    __tablename__ = "prescription_shares"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    prescription_id = Column(Integer, ForeignKey("prescriptions_voucher.id"), nullable=False)
+    pharmacy_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    share_token = Column(String, unique=True, nullable=False, index=True)
+    shared_at = Column(DateTime, default=datetime.utcnow)
+    viewed = Column(Boolean, default=False)
+    viewed_at = Column(DateTime, nullable=True)
+    sold = Column(Boolean, default=False)
+    sold_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    prescription = relationship("PrescriptionVoucher")
+    pharmacy = relationship("Organization")    

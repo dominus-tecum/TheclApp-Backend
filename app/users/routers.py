@@ -40,20 +40,20 @@ def create_refresh_token(username: str, user_id: int):
 @router.get("/pending")
 def get_pending_patients(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
 
-    print(f"DEBUG - User role: {current_user.get('role')}")
-    print(f"DEBUG - User org_id: {current_user.get('organization_id')}")
-    print(f"DEBUG - is_super_admin: {current_user.get('is_super_admin')}")
+    print(f"DEBUG - User role: {current_user.role.value}")
+    print(f"DEBUG - User org_id: {current_user.organization_id}")
+    print(f"DEBUG - is_super_admin: {current_user.is_super_admin}")
 
 
     """Get pending patients - Admin only"""
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         patients = db.query(User).filter(
             User.role == 'PATIENT',
             User.status == 'pending'
@@ -62,14 +62,14 @@ def get_pending_patients(
         patients = db.query(User).filter(
             User.role == 'PATIENT',
             User.status == 'pending',
-            User.organization_id == current_user.get('organization_id')
+            User.organization_id == current_user.organization_id
         ).all()
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='PENDING_PATIENTS',
         status='success',
@@ -83,33 +83,33 @@ def get_pending_patients(
 @router.get("/stats")
 def get_user_stats(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get user statistics - Admin only"""
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         total = db.query(User).count()
         pending = db.query(User).filter(User.status == 'pending').count()
         approved = db.query(User).filter(User.status == 'approved').count()
     else:
-        total = db.query(User).filter(User.organization_id == current_user.get('organization_id')).count()
+        total = db.query(User).filter(User.organization_id == current_user.organization_id).count()
         pending = db.query(User).filter(
-            User.organization_id == current_user.get('organization_id'),
+            User.organization_id == current_user.organization_id,
             User.status == 'pending'
         ).count()
         approved = db.query(User).filter(
-            User.organization_id == current_user.get('organization_id'),
+            User.organization_id == current_user.organization_id,
             User.status == 'approved'
         ).count()
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='USER_STATS',
         status='success',
@@ -123,18 +123,18 @@ def get_user_stats(
 @router.get("/")
 def get_all_users(
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all users - Admin only"""
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         users = db.query(User).all()
     else:
         users = db.query(User).filter(
-            User.organization_id == current_user.get('organization_id')
+            User.organization_id == current_user.organization_id
         ).all()
     
     result = []
@@ -152,9 +152,9 @@ def get_all_users(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='USERS_LIST',
         status='success',
@@ -357,10 +357,10 @@ async def refresh_token(refresh_token: str = Body(..., embed=True)):
 
 @router.get("/me", response_model=UserRead)
 def get_current_user_info(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.id == current_user.get('id')).first()
+    user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -401,19 +401,19 @@ async def save_consent(
 def approve_user(
     user_id: int,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Approve a user - Admin only"""
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if not current_user.get('is_super_admin'):
-        if user.organization_id != current_user.get('organization_id'):
+    if not current_user.is_super_admin:
+        if user.organization_id != current_user.organization_id:
             raise HTTPException(status_code=403, detail="Not authorized to approve users from other organizations")
     
     user.status = 'approved'
@@ -421,9 +421,9 @@ def approve_user(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='APPROVE',
         resource_type='USER',
         resource_id=user_id,
@@ -439,22 +439,22 @@ def approve_user(
 def delete_user(
     user_id: int,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a user - Admin only"""
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if user.id == current_user.get('id'):
+    if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     
-    if not current_user.get('is_super_admin'):
-        if user.organization_id != current_user.get('organization_id'):
+    if not current_user.is_super_admin:
+        if user.organization_id != current_user.organization_id:
             raise HTTPException(status_code=403, detail="Not authorized to delete users from other organizations")
     
     db.delete(user)
@@ -462,9 +462,9 @@ def delete_user(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='DELETE',
         resource_type='USER',
         resource_id=user_id,
@@ -482,7 +482,7 @@ def delete_user(
 def get_user(
     user_id: int,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id == user_id).first()
@@ -491,9 +491,9 @@ def get_user(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='USER',
         resource_id=user_id,

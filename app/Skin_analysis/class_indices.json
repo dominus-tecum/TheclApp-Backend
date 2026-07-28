@@ -1,0 +1,11 @@
+{
+  "Acne": 0,
+  "Benign growths and moles": 1,
+  "Infectious Skin disease": 2,
+  "Inflammatory Skin Condition": 3,
+  "Sun_Sunlight_Damage": 4,
+  "Suspicious Growth": 5,
+  "Unknown_Normal": 6,
+  "Warts": 7,
+  "pigment disorder": 8
+}

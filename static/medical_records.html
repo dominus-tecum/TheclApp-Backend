@@ -8,6 +8,50 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #f0f4f8; padding: 24px; }
+        /* Success Dialog */
+.success-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.success-dialog-content {
+    background: white;
+    border-radius: 16px;
+    padding: 40px 60px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+.success-dialog-content h3 {
+    color: #2d6a4f;
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+.success-dialog-content p {
+    font-size: 18px;
+    color: #374151;
+}
+.success-close {
+    margin-top: 20px;
+    background: #2d6a4f;
+    color: white;
+    border: none;
+    padding: 8px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
         .container { max-width: 1400px; margin: 0 auto; }
         .header { background: linear-gradient(135deg, #0f2b3d 0%, #1a3a4f 100%); color: white; padding: 20px 24px; border-radius: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { font-size: 24px; margin-bottom: 4px; }
@@ -139,24 +183,32 @@
     </div>
     
     <div class="form-group">
-        <label>💊 Medications (Add as many as needed)</label>
+        <label>💊 Medications (Click on any medication name to edit its instructions)</label>
         <div id="medicationsContainer"></div>
-        <button type="button" class="add-btn" onclick="addMedicationField()">+ Add Medication</button>
+        <button type="button" class="add-btn" onclick="addMedicationField()" style="margin-top: 10px;">+ Add Medication</button>
     </div>
     
     <div class="form-group"><label>Prescribing Doctor</label><select id="rxDoctor" required><option value="">Select doctor...</option></select></div>
     <div class="form-group"><label>Prescription Date</label><input type="date" id="rxDate" required></div>
-    <div class="form-group"><label>Status</label><select id="rxStatus"><option value="Active">Active</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div>
+    <div class="form-group"><label>Overall Status</label><select id="rxStatus"><option value="Active">Active</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div>
     
-    <!-- ADD THIS INSTRUCTIONS FIELD -->
-    <div class="form-group">
-        <label>Instructions (optional)</label>
-        <textarea id="rxInstructions" rows="3" placeholder="Take with food, avoid grapefruit, take on empty stomach, etc." style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 10px; font-family: 'Inter', sans-serif;"></textarea>
-    </div>
-    
-    <button class="btn btn-primary" onclick="createPrescription()">💾 Save Prescription</button>
+    <button class="btn btn-primary" onclick="createPrescription()">💾 Save Prescription (All Medications)</button>
 </div>
-            
+
+<!-- Modal for editing medication instructions -->
+<div id="instructionModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 16px; padding: 30px; max-width: 500px; width: 90%;">
+        <h3 style="margin-bottom: 20px;">📝 Edit Instructions</h3>
+        <div class="form-group">
+            <label>Medication: <span id="modalMedName" style="font-weight: bold; color: #2d6a4f;"></span></label>
+            <textarea id="modalInstructions" rows="4" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;" placeholder="e.g., Take with food, twice daily, for 7 days"></textarea>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="saveInstructionModal()" style="flex: 1; background: #2d6a4f; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer;">Save Instructions</button>
+            <button onclick="closeInstructionModal()" style="flex: 1; background: #64748b; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer;">Cancel</button>
+        </div>
+    </div>
+</div>            
             <!-- MEDICAL HISTORY TAB -->
             <div id="historyTab" class="form-section">
                 <h2>Add Medical History Record</h2>
@@ -213,7 +265,7 @@
         const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
         try {
-            const res = await fetch('/api/auth/login', {
+            const res = await fetch('/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
@@ -290,6 +342,31 @@ function hideWriteButtonsForNonDoctors() {
     }
 }
 
+
+function showSuccessMessage() {
+    const dialog = document.createElement('div');
+    dialog.className = 'success-dialog';
+    dialog.innerHTML = `
+        <div class="success-dialog-content">
+            <h3>✅ Prescription Saved Successfully!</h3>
+            <button class="success-close" onclick="this.closest('.success-dialog').remove()">OK</button>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+    
+    // Auto close after 2 seconds
+    setTimeout(() => {
+        if (dialog) dialog.remove();
+    }, 2000);
+}
+
+
+
+
+
+
+
+
     async function loadDoctors() {
     try {
         const response = await fetch('/api/users?role=doctor', {
@@ -303,26 +380,6 @@ function hideWriteButtonsForNonDoctors() {
         return [];
     }
 }
-
-
-async function populateDoctorDropdowns() {
-    const doctors = await loadDoctors();
-    const doctorSelects = ['labDoctor', 'rxDoctor', 'historyDoctor'];
-    
-    doctorSelects.forEach(selectId => {
-        const select = document.getElementById(selectId);
-        if (select) {
-            select.innerHTML = '<option value="">Select doctor...</option>';
-            doctors.forEach(doctor => {
-                const option = document.createElement('option');
-                option.value = doctor.name || `${doctor.first_name} ${doctor.last_name}`;
-                option.textContent = `${doctor.name} (${doctor.specialty || 'General'})`;
-                select.appendChild(option);
-            });
-        }
-    });
-}
-
 
 
 // Add this function to check token expiration
@@ -368,9 +425,133 @@ async function makeAuthenticatedRequest(url, options) {
 if (authToken) {
     document.getElementById('authOverlay').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
-    populateDoctorDropdowns();
-    hideWriteButtonsForNonDoctors();
+    
+    (async () => {
+        await loadCurrentDoctor();
+        await populateDoctorDropdowns();
+        hideWriteButtonsForNonDoctors();
+    })();
 }
+
+
+let currentDoctorName = '';
+let currentDoctorId = null;
+let assignedPatients = [];
+
+async function loadCurrentDoctor() {
+    try {
+        const response = await fetch('/auth/me', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const user = await response.json();
+        if (user.role === 'doctor') {
+            currentDoctorName = user.name || user.username;
+            currentDoctorId = user.id;
+            
+            // Fetch assigned patients
+            await loadAssignedPatients();
+            
+            // Pre-fill doctor dropdowns
+            const doctorSelects = ['labDoctor', 'rxDoctor', 'historyDoctor'];
+            doctorSelects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (select) {
+                    select.value = currentDoctorName;
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading current doctor:', error);
+    }
+}
+
+
+async function loadAssignedPatients() {
+    try {
+        console.log('🔍 Fetching assigned patients for doctor ID:', currentDoctorId);
+        const response = await fetch(`/api/doctors/${currentDoctorId}/patients`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await response.json();
+        console.log('📦 Response data:', data);
+        assignedPatients = data.patients || [];
+        console.log(`✅ Loaded ${assignedPatients.length} assigned patients:`, assignedPatients);
+    } catch (error) {
+        console.error('Error loading assigned patients:', error);
+        assignedPatients = [];
+    }
+}
+
+
+
+// Show all assigned patients when search box gets focus
+document.getElementById('labPatientSearch').addEventListener('focus', function() {
+    displayAllPatients('lab');
+});
+document.getElementById('rxPatientSearch').addEventListener('focus', function() {
+    displayAllPatients('rx');
+});
+document.getElementById('historyPatientSearch').addEventListener('focus', function() {
+    displayAllPatients('history');
+});
+
+
+function displayAllPatients(type) {
+    const listDiv = document.getElementById(`${type}PatientList`);
+    if (!assignedPatients.length) {
+        listDiv.innerHTML = '<div class="patient-item">No assigned patients</div>';
+        return;
+    }
+    
+    let html = '';
+    assignedPatients.forEach(p => {
+        html += `<div class="patient-item" onclick="selectPatient('${type}', '${p.id}', '${p.name}')">
+                    <strong>${escapeHtml(p.name)}</strong><br>
+                    <small>${escapeHtml(p.email)}</small>
+                 </div>`;
+    });
+    listDiv.innerHTML = html;
+}
+
+
+
+async function populateDoctorDropdowns() {
+    const doctors = await loadDoctors();
+    const doctorSelects = ['labDoctor', 'rxDoctor', 'historyDoctor'];
+    
+    doctorSelects.forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (select) {
+            select.innerHTML = '<option value="">Select doctor...</option>';
+            
+            // If current user is doctor, add them as an option and select them
+            if (currentDoctorName) {
+                const option = document.createElement('option');
+                option.value = currentDoctorName;
+                option.textContent = `${currentDoctorName} (You)`;
+                select.appendChild(option);
+                select.value = currentDoctorName;
+            }
+            
+            // Add other doctors
+            doctors.forEach(doctor => {
+                if (doctor.name !== currentDoctorName) {
+                    const option = document.createElement('option');
+                    option.value = doctor.name;
+                    option.textContent = `${doctor.name} (${doctor.specialty || 'General'})`;
+                    select.appendChild(option);
+                }
+            });
+        }
+    });
+}
+
+
+
+
+
+
+
 
     function showAlert(msg, type) {
         const alertDiv = document.getElementById('alert');
@@ -412,20 +593,81 @@ if (authToken) {
     // Dynamic medication fields
     let medicationCount = 0;
     function addMedicationField() {
-        const container = document.getElementById('medicationsContainer');
-        const div = document.createElement('div');
-        div.className = 'medication-row';
-        div.innerHTML = `
-            <input type="text" placeholder="Medication name" class="med-name">
-            <input type="text" placeholder="Dosage" class="med-dosage">
-            <input type="text" placeholder="Frequency" class="med-frequency">
-            <input type="text" placeholder="Quantity" class="med-quantity">
-            <input type="text" placeholder="Refills" class="med-refills">
-            <button type="button" class="remove-btn" onclick="this.parentElement.remove()">✕</button>
-        `;
-        container.appendChild(div);
-        medicationCount++;
+    const container = document.getElementById('medicationsContainer');
+    
+    const div = document.createElement('div');
+    div.className = 'medication-row';
+    div.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; padding: 10px; background: #f8fafc; border-radius: 10px;';
+    div.innerHTML = `
+        <input type="text" placeholder="Medication name" class="med-name" style="flex: 2; min-width: 150px; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+        <input type="text" placeholder="Dosage" class="med-dosage" style="flex: 1; min-width: 100px; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+        <input type="text" placeholder="Frequency" class="med-frequency" style="flex: 1; min-width: 120px; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+        <input type="text" placeholder="Quantity" class="med-quantity" style="flex: 1; min-width: 80px; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+        <input type="text" placeholder="Refills" class="med-refills" style="flex: 1; min-width: 80px; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+        <button type="button" class="instruction-btn" style="background: #f59e0b; color: white; border: none; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;">📝 Instructions</button>
+        <button type="button" class="remove-btn" onclick="this.parentElement.remove()" style="background: #dc2626; color: white; border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer;">✕</button>
+    `;
+    
+    // Add hidden field for instructions
+    const instructionsField = document.createElement('input');
+    instructionsField.type = 'hidden';
+    instructionsField.className = 'med-instructions';
+    div.appendChild(instructionsField);
+    
+    // Instructions button opens modal for THIS medication
+    const instrBtn = div.querySelector('.instruction-btn');
+    instrBtn.onclick = function() {
+        const medName = div.querySelector('.med-name').value || 'Unnamed Medication';
+        openInstructionModal(div, medName);
+    };
+    
+    container.appendChild(div);
+}
+
+let currentEditingRow = null;
+let currentMedName = '';
+
+function openInstructionModal(row, medName) {
+    currentEditingRow = row;
+    currentMedName = medName;
+    document.getElementById('modalMedName').innerText = medName || 'Unnamed Medication';
+    
+    // Get existing instructions from hidden field
+    let instructionsField = row.querySelector('.med-instructions');
+    if (instructionsField) {
+        document.getElementById('modalInstructions').value = instructionsField.value;
+    } else {
+        document.getElementById('modalInstructions').value = '';
     }
+    
+    document.getElementById('instructionModal').style.display = 'flex';
+}
+
+function closeInstructionModal() {
+    document.getElementById('instructionModal').style.display = 'none';
+    currentEditingRow = null;
+}
+
+function saveInstructionModal() {
+    if (currentEditingRow) {
+        let instructionsField = currentEditingRow.querySelector('.med-instructions');
+        if (!instructionsField) {
+            instructionsField = document.createElement('input');
+            instructionsField.type = 'hidden';
+            instructionsField.className = 'med-instructions';
+            currentEditingRow.appendChild(instructionsField);
+        }
+        instructionsField.value = document.getElementById('modalInstructions').value;
+        
+        // Show saved indicator
+        const medNameInput = currentEditingRow.querySelector('.med-name');
+        medNameInput.style.backgroundColor = '#dcfce7';
+        setTimeout(() => {
+            if (medNameInput) medNameInput.style.backgroundColor = '#fef3c7';
+        }, 500);
+    }
+    closeInstructionModal();
+}
 
 
     function calculateBMI() {
@@ -447,26 +689,39 @@ if (authToken) {
     }
 }
 
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+
+
+
+
     
     async function searchPatients(type) {
-        const searchInput = document.getElementById(`${type}PatientSearch`);
-        const listDiv = document.getElementById(`${type}PatientList`);
-        const term = searchInput.value.toLowerCase();
-        if (term.length < 2) { listDiv.innerHTML = ''; return; }
-        try {
-            const res = await fetch(`/api/patients/search?q=${encodeURIComponent(term)}`, { 
-                headers: { 'Authorization': `Bearer ${authToken}` } 
-            });
-            const data = await res.json();
-            const patients = data.patients || [];
-            const filtered = patients.filter(p => (p.name && p.name.toLowerCase().includes(term)) || (p.email && p.email.toLowerCase().includes(term)));
-            let html = '';
-            filtered.forEach(p => {
-                html += `<div class="patient-item" onclick="selectPatient('${type}', '${p.id}', '${p.name}')"><strong>${p.name}</strong><br><small>${p.email}</small></div>`;
-            });
-            listDiv.innerHTML = html;
-        } catch(err) { console.error(err); }
-    }
+    const searchInput = document.getElementById(`${type}PatientSearch`);
+    const listDiv = document.getElementById(`${type}PatientList`);
+    const term = searchInput.value.toLowerCase();
+    if (term.length < 2) { listDiv.innerHTML = ''; return; }
+    
+    // Use assignedPatients instead of API call
+    const filtered = assignedPatients.filter(p => 
+        (p.name && p.name.toLowerCase().includes(term)) || 
+        (p.email && p.email.toLowerCase().includes(term))
+    );
+    
+    let html = '';
+    filtered.forEach(p => {
+        html += `<div class="patient-item" onclick="selectPatient('${type}', '${p.id}', '${p.name}')">
+                    <strong>${escapeHtml(p.name)}</strong><br>
+                    <small>${escapeHtml(p.email)}</small>
+                 </div>`;
+    });
+    listDiv.innerHTML = html;
+}
     
     let currentSelectedPatientId = null;
 
@@ -637,14 +892,14 @@ async function changePatientDoctor() {
         console.log("Response body:", responseText);
         
         if (res.ok) { 
-            showAlert('Lab result created!', 'success'); 
-            document.getElementById('testName').value = ''; 
-            document.getElementById('interpretation').value = ''; 
-            document.getElementById('resultsContainer').innerHTML = ''; 
-            addResultField(); 
-        } else { 
-            showAlert('Failed: ' + responseText, 'error'); 
-        }
+    showSuccessMessage('Lab Result Saved Successfully!'); 
+    document.getElementById('testName').value = ''; 
+    document.getElementById('interpretation').value = ''; 
+    document.getElementById('resultsContainer').innerHTML = ''; 
+    addResultField(); 
+} else { 
+    showAlert('Failed: ' + responseText, 'error'); 
+}
     } catch(err) { 
         console.error("Fetch error:", err);
         showAlert('Network error: ' + err.message, 'error'); 
@@ -652,75 +907,103 @@ async function changePatientDoctor() {
 }
     
     async function createPrescription() {
-        if (!requireWriteAccess()) return;
+    if (!requireWriteAccess()) return;
+    
     const patientId = document.getElementById('rxSelectedPatientId').value;
     const patientName = document.getElementById('rxSelectedPatientName').value;
     const doctor = document.getElementById('rxDoctor').value;
     const date = document.getElementById('rxDate').value;
     const status = document.getElementById('rxStatus').value;
-    const instructions = document.getElementById('rxInstructions')?.value || ''; // ← ADD THIS
     
-    // Collect all medications
+    // Collect ALL medications with their individual instructions
     const medications = [];
     const medRows = document.querySelectorAll('#medicationsContainer .medication-row');
+    
     medRows.forEach(row => {
         const name = row.querySelector('.med-name').value;
         const dosage = row.querySelector('.med-dosage').value;
         const frequency = row.querySelector('.med-frequency').value;
         const quantity = row.querySelector('.med-quantity').value;
         const refills = row.querySelector('.med-refills').value;
+        const instructionsField = row.querySelector('.med-instructions');
+        const instructions = instructionsField ? instructionsField.value : '';
+        
         if (name && dosage && frequency) {
-            medications.push({ medication_name: name, dosage, frequency, quantity: quantity || null, refills: refills || null });
+            medications.push({ 
+                medication_name: name, 
+                dosage: dosage, 
+                frequency: frequency, 
+                quantity: quantity || null, 
+                refills: refills || null,
+                instructions: instructions
+            });
         }
     });
     
-    if (!patientId || medications.length === 0 || !doctor || !date) { showAlert('Fill required fields and add at least one medication', 'error'); return; }
+    if (!patientId || medications.length === 0 || !doctor || !date) { 
+        showAlert('Fill required fields and add at least one medication', 'error'); 
+        return; 
+    }
     
-    // For first medication (simplified - can be expanded)
-    const firstMed = medications[0];
-    const details = { 
-        medication_name: firstMed.medication_name, 
-        dosage: firstMed.dosage, 
-        frequency: firstMed.frequency, 
-        quantity: firstMed.quantity, 
-        refills: firstMed.refills, 
-        instructions: instructions,  // ← ADD THIS
-        purpose: '' 
-    };
+    let successCount = 0;
+    let errorCount = 0;
     
-    const record = { 
-        patient_id: patientId, 
-        patient_name: patientName, 
-        type: `${firstMed.medication_name} ${firstMed.dosage}`, 
-        category: 'Prescriptions', 
-        doctor, 
-        date, 
-        status, 
-        details 
-    };
-    
-    try {
-        const res = await fetch('/api/medical-record/', { 
-            method: 'POST', 
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${authToken}`
-            }, 
-            body: JSON.stringify(record) 
-        });
-        if (res.ok) { 
-            showAlert('Prescription created!', 'success'); 
-            document.getElementById('medicationsContainer').innerHTML = ''; 
-            addMedicationField();
-            document.getElementById('rxInstructions').value = ''; // Clear instructions
-        } else { 
-            showAlert('Failed', 'error'); 
+    // Save EACH medication with its own instructions
+    for (let i = 0; i < medications.length; i++) {
+        const med = medications[i];
+        const details = { 
+            medication_name: med.medication_name, 
+            dosage: med.dosage, 
+            frequency: med.frequency, 
+            quantity: med.quantity, 
+            refills: med.refills, 
+            instructions: med.instructions,
+            purpose: '' 
+        };
+        
+        const record = { 
+            patient_id: patientId, 
+            patient_name: patientName, 
+            type: `${med.medication_name} ${med.dosage}`, 
+            category: 'Prescriptions', 
+            doctor: doctor, 
+            date: date, 
+            status: status, 
+            details: details 
+        };
+        
+        try {
+            const res = await fetch('/api/medical-record/', { 
+                method: 'POST', 
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${authToken}`
+                }, 
+                body: JSON.stringify(record) 
+            });
+            
+            if (res.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+        } catch(err) { 
+            errorCount++;
         }
-    } catch(err) { 
-        showAlert('Network error', 'error'); 
+    }
+    
+    if (successCount > 0) {
+        showSuccessMessage(`Prescription Saved Successfully! (${successCount} medication${successCount > 1 ? 's' : ''})`);
+        document.getElementById('medicationsContainer').innerHTML = ''; 
+        addMedicationField();
+    } else {
+        showAlert('Failed to save prescriptions', 'error');
     }
 }
-    
+
+
+
+
     async function createMedicalHistory() {
             if (!requireWriteAccess()) return;
         const patientId = document.getElementById('historySelectedPatientId').value;
@@ -762,7 +1045,7 @@ async function changePatientDoctor() {
         const record = { patient_id: patientId, patient_name: patientName, type: visitType, category: 'Medical History', doctor, date, status, details };
         try {
             const res = await fetch('/api/medical-record/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, body: JSON.stringify(record) });
-            if (res.ok) { showAlert('Medical history created!', 'success'); document.getElementById('visitType').value = ''; document.getElementById('notes').value = ''; }
+            if (res.ok) { showSuccessMessage('Medical History Saved Successfully!'); document.getElementById('visitType').value = ''; document.getElementById('notes').value = ''; }
             else { showAlert('Failed', 'error'); }
         } catch(err) { showAlert('Network error', 'error'); }
     }

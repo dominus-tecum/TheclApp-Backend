@@ -25,7 +25,7 @@ async def export_patient_data(
 ):
     """Export all patient data in JSON format (UAE PDPL Right to Access)"""
     
-    patient_id = current_user.get('id')
+    patient_id = current_user.id
     
     # Get user data from database to get full object
     user_obj = db.query(User).filter(User.id == patient_id).first()
@@ -251,7 +251,7 @@ async def export_patient_data_csv(
         writer.writeheader()
         writer.writerows(csv_data)
     
-    patient_id = current_user.get('id')
+    patient_id = current_user.id
     
     # Log audit
     log_audit(
@@ -283,7 +283,7 @@ async def delete_patient_data(
     Soft delete all patient data (UAE PDPL Right to be Forgotten)
     Data remains in database for legal/medical retention but is not accessible
     """
-    patient_id = current_user.get('id')
+    patient_id = current_user.id
     deleted_at = datetime.utcnow()
     
     # List of all tables to soft delete
@@ -403,7 +403,7 @@ async def reactivate_account(
     Reactivate a soft-deleted account (Admin only)
     """
     # Check if current user is admin
-    user_role = current_user.get('role')
+    user_role = current_user.role.value
     if user_role not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
@@ -434,7 +434,7 @@ async def reactivate_account(
     # Log the reactivation
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
+        user_id=current_user.id,
         action="REACTIVATE",
         resource_type="patient_data",
         resource_id=str(user_id),

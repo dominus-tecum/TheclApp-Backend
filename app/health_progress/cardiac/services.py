@@ -13,10 +13,10 @@ class CardiacProgressService:
 
     def create_entry(self, entry_data: Dict[str, Any]) -> CardiacSurgeryEntry:
         """
-        Create a new cardiac surgery progress entry - STORE AS JSON like cesarean
+        Create or update a cardiac surgery progress entry (UPSERT)
         """
         try:
-            print("🔍 CARDIAC SERVICES: Starting create_entry...")
+            print("🔍 CARDIAC SERVICES: Starting upsert...")
             
             # Convert submission_date string to date object
             submission_date_str = entry_data.get('submission_date')
@@ -25,36 +25,50 @@ class CardiacProgressService:
             else:
                 submission_date = datetime.utcnow().date()
             
-            print(f"🔍 CARDIAC SERVICES: submission_date: {submission_date}")
+            patient_id = entry_data.get('patient_id')
             
-            # ✅ SIMPLE INTEGER patient_id like cesarean (no foreign key)
-
-
-            db_entry = CardiacSurgeryEntry(
-    patient_id=entry_data.get('patient_id'),
-    patient_name=entry_data.get('patient_name', ''),
-    surgery_type=entry_data.get('surgery_type', 'cardiac'),
-    submission_date=submission_date,
-    
-    # ✅ DIRECT JSON STORAGE like cesarean
-    common_data=entry_data.get('common_data', {}),
-    condition_data=entry_data.get('condition_data', {}),
-    photo_urls=entry_data.get('photo_urls', [])  # ✅ ADD THIS LINE
-)
+            # Check if entry already exists for this patient and date
+            existing_entry = self.db.query(CardiacSurgeryEntry).filter(
+                CardiacSurgeryEntry.patient_id == patient_id,
+                CardiacSurgeryEntry.submission_date == submission_date
+            ).first()
             
-            print("🔍 CARDIAC SERVICES: Database entry created, about to add to session...")
-            
-            self.db.add(db_entry)
-            self.db.commit()
-            self.db.refresh(db_entry)
-            
-            print(f"✅ CARDIAC SERVICES: Entry created successfully with ID: {db_entry.id}")
-            return db_entry
-            
+            if existing_entry:
+                # UPDATE existing entry
+                print(f"🔄 CARDIAC SERVICES: Updating existing entry ID: {existing_entry.id}")
+                
+                existing_entry.patient_name = entry_data.get('patient_name', '')
+                existing_entry.surgery_type = entry_data.get('surgery_type', 'cardiac')
+                existing_entry.common_data = entry_data.get('common_data', {})
+                existing_entry.condition_data = entry_data.get('condition_data', {})
+                existing_entry.photo_urls = entry_data.get('photo_urls', [])
+                
+                self.db.commit()
+                self.db.refresh(existing_entry)
+                return existing_entry
+            else:
+                # CREATE new entry
+                print(f"✨ CARDIAC SERVICES: Creating new entry")
+                
+                db_entry = CardiacSurgeryEntry(
+                    patient_id=patient_id,
+                    patient_name=entry_data.get('patient_name', ''),
+                    surgery_type=entry_data.get('surgery_type', 'cardiac'),
+                    submission_date=submission_date,
+                    common_data=entry_data.get('common_data', {}),
+                    condition_data=entry_data.get('condition_data', {}),
+                    photo_urls=entry_data.get('photo_urls', [])
+                )
+                
+                self.db.add(db_entry)
+                self.db.commit()
+                self.db.refresh(db_entry)
+                return db_entry
+                
         except Exception as e:
             self.db.rollback()
             print(f"❌ CARDIAC SERVICES: Error: {str(e)}")
-            raise Exception(f"Error creating cardiac entry: {str(e)}")
+            raise Exception(f"Error upserting cardiac entry: {str(e)}")
 
     def get_all_entries(self) -> List[CardiacSurgeryEntry]:
         """
@@ -72,9 +86,9 @@ class CardiacProgressService:
             print(f"❌ CARDIAC SERVICES: Error fetching all cardiac entries: {str(e)}")
             raise Exception(f"Error fetching cardiac entries: {str(e)}")
 
-    def check_existing_entry(self, patient_id: int, date_str: str) -> bool:
+    def check_existing_entry(self, patient_id: int, date_str: str):
         """
-        Check if a cardiac entry exists for a patient on a specific date
+        Returns entry object or None
         """
         try:
             if isinstance(date_str, str):
@@ -82,16 +96,14 @@ class CardiacProgressService:
             else:
                 submission_date = date_str
             
-            existing_entry = self.db.query(CardiacSurgeryEntry).filter(
+            return self.db.query(CardiacSurgeryEntry).filter(
                 CardiacSurgeryEntry.patient_id == patient_id,
                 CardiacSurgeryEntry.submission_date == submission_date
             ).first()
             
-            return existing_entry is not None
-            
         except Exception as e:
             print(f"❌ CARDIAC SERVICES: Error checking cardiac entry: {e}")
-            return False
+            return None
 
     def get_patient_entries(self, patient_id: int) -> List[CardiacSurgeryEntry]:
         """

@@ -17,7 +17,7 @@ def get_database_url():
     elif environment == "staging":
         return "sqlite:///./hospiapp_staging.db"
     else:  # development
-        return "sqlite:///./hospiapp.db"
+        return "sqlite:///./hospiapp_et.db"
 
 DATABASE_URL = get_database_url()
 # ===========================================================

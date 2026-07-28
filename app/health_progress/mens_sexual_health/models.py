@@ -87,3 +87,29 @@ class MensHealthCalibration(Base):
     is_active = Column(Boolean, default=True)
     calibrated_at = Column(DateTime, server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+class MensHealthReport(Base):
+    """Reports shared by doctor to patient (compatibility, progress, etc.)"""
+    __tablename__ = "mens_health_reports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, nullable=False, index=True)
+    doctor_id = Column(Integer, nullable=False, index=True)
+    organization_id = Column(Integer, nullable=False, default=1)
+    
+    # Report data
+    report_type = Column(String(50), default="compatibility")
+    length_cm = Column(Float, nullable=True)
+    girth_cm = Column(Float, nullable=True)
+    compatibility_data = Column(JSON, nullable=True)
+    
+    # Status tracking
+    status = Column(String(20), default="draft")  # draft, shared, viewed, expired
+    shared_at = Column(DateTime, nullable=True)
+    viewed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)    

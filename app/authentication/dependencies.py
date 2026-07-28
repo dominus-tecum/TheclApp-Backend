@@ -5,7 +5,7 @@ from .auth import get_current_user
 # Role-based permission dependencies
 def require_role(required_role: UserRole):
     def role_checker(current_user: User = Depends(get_current_user)):
-        if current_user.role != required_role:
+        if current_user.role.value != required_role.value:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires {required_role.value} role"
@@ -20,7 +20,7 @@ require_patient = require_role(UserRole.PATIENT)
 
 # Staff checker (both admin and doctor)
 def require_staff(current_user: User = Depends(get_current_user)):
-    if current_user.role not in [UserRole.ADMIN, UserRole.DOCTOR]:
+    if current_user.role.value not in [UserRole.ADMIN.value, UserRole.DOCTOR.value]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Requires staff role (admin or doctor)"

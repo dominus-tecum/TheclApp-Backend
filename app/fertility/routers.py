@@ -8,6 +8,7 @@ from app.organization.dependencies import get_current_organization
 from app.models import Organization
 from app.database import get_db
 from app.dependencies import get_visible_patient_ids
+from app.models import User, UserRole, PatientDoctorAssignment  # Add PatientDoctorAssignment
 from app.fertility.models import (
     FertilityEntry, FertilityProfile, Patient,
     # ALL ENUMS used in insights functions:
@@ -39,20 +40,20 @@ router = APIRouter()
 # Dependency to get current patient ID
 # In app/fertility/routers.py, update the function:
 def get_current_patient_id(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> int:
     """Get current patient ID from user"""
 
     print(f"🔍 [GET-PATIENT-ID] Current user: {current_user}")
-    print(f"🔍 [GET-PATIENT-ID] Current user ID: {current_user.get('id')}")
-    print(f"🔍 [GET-PATIENT-ID] Current user ID type: {type(current_user.get('id'))}")
+    print(f"🔍 [GET-PATIENT-ID] Current user ID: {current_user.id}")
+    print(f"🔍 [GET-PATIENT-ID] Current user ID type: {type(current_user.id)}")
 
 
        
         
     patient_service = PatientService(db)
-    patient = patient_service.get_patient_by_user_id(str(current_user.get("id")))
+    patient = patient_service.get_patient_by_user_id(str(current_user.id))
 
     print(f"🔍 [GET-PATIENT-ID] Patient found: {patient}")
     
@@ -61,9 +62,9 @@ def get_current_patient_id(
         
         print(f"🔍 [GET-PATIENT-ID] Creating new patient...")
         patient_data = {
-            "user_id": str(current_user.get("id")),
-            "name": current_user.get("name", "User"),
-            "email": current_user.get("email", "")
+            "user_id": str(current_user.id),
+            "name": current_user.name or "User",
+            "email": current_user.email or ""
         }
         patient = patient_service.create_patient(patient_data)
     
@@ -117,9 +118,9 @@ def get_patient_by_id(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_PATIENT',
         patient_id=patient.id,
@@ -171,9 +172,9 @@ def get_entry_by_patient_and_date(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_ENTRY',
         patient_id=int(patient_id) if patient_id.isdigit() else None,
@@ -210,7 +211,7 @@ def get_fertility_entries(
     print(f"🔍 [FERTILITY-ENTRIES] Patient ID from dependency: {patient_id}")
 
      # ✅ SUPER ADMIN CANNOT SEE PATIENT DATA
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Access denied")
     
     print(f"✅ [FERTILITY-ENTRIES] Authentication SUCCESS")
@@ -228,9 +229,9 @@ def get_fertility_entries(
        
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_ENTRIES',
         patient_id=patient_id,
@@ -298,6 +299,27 @@ async def get_all_fertility_entries(
 ):
     try:
         entries = db.query(FertilityEntry).all()
+                # ========== ROLE-BASED ACCESS CONTROL ==========
+        if current_user.role == UserRole.DOCTOR:
+            # Get patients assigned to this doctor
+            assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.id,
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            patient_ids = [a[0] for a in assignments]
+            
+            if not patient_ids:
+                entries = []
+            else:
+                # Filter entries by patient_id (entries store patient_id as int)
+                entries = [e for e in entries if e.patient_id in patient_ids]
+                
+        elif current_user.role == UserRole.PATIENT:
+            # Patient sees only their own entries
+            entries = [e for e in entries if e.patient_id == current_user.id]
+        
+        # Admin and super admin see all entries (no filter needed)
+        # ========================================================
         
         formatted_entries = []
         for entry in entries:
@@ -408,9 +430,9 @@ async def get_all_fertility_entries(
         
         log_audit(
             db=db,
-            user_id=current_user.get('id'),
-            username=current_user.get('username'),
-            user_role=current_user.get('role'),
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value,
             action='READ',
             resource_type='FERTILITY_ENTRIES',
             patient_id=None,
@@ -445,9 +467,9 @@ def get_fertility_entry(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_ENTRY',
         resource_id=entry_id,
@@ -474,7 +496,7 @@ def update_fertility_entry(
 ):
     # ✅ PERMISSION CHECK GOES HERE (inside function body)
 
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
 
@@ -485,9 +507,9 @@ def update_fertility_entry(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='UPDATE',
         resource_type='FERTILITY_ENTRY',
         resource_id=entry_id,
@@ -512,7 +534,7 @@ def delete_fertility_entry(
     current_user = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
     """Delete a fertility entry"""
@@ -521,9 +543,9 @@ def delete_fertility_entry(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='DELETE',
         resource_type='FERTILITY_ENTRY',
         resource_id=entry_id,
@@ -552,9 +574,9 @@ def get_entry_by_date(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_ENTRY',
         patient_id=patient_id,
@@ -582,9 +604,9 @@ def get_cycle_entries(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_CYCLE',
         patient_id=patient_id,
@@ -608,7 +630,7 @@ def create_fertility_profile(
     current_user = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
     """Create a fertility profile"""
@@ -617,9 +639,9 @@ def create_fertility_profile(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='CREATE',
         resource_type='FERTILITY_PROFILE',
         patient_id=patient_id,
@@ -647,9 +669,9 @@ def get_fertility_profile(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='FERTILITY_PROFILE',
         patient_id=patient_id,
@@ -672,7 +694,7 @@ def update_fertility_profile(
     current_user = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
     """Update fertility profile"""
@@ -681,9 +703,9 @@ def update_fertility_profile(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='UPDATE',
         resource_type='FERTILITY_PROFILE',
         patient_id=patient_id,
@@ -706,7 +728,7 @@ def delete_fertility_profile(
     current_user = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
 
@@ -716,9 +738,9 @@ def delete_fertility_profile(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='DELETE',
         resource_type='FERTILITY_PROFILE',
         patient_id=patient_id,
@@ -756,9 +778,9 @@ def analyze_cycle(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='ANALYZE',
         resource_type='FERTILITY_ANALYSIS',
         patient_id=patient_id,
@@ -797,9 +819,9 @@ def generate_doctor_summary(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='ANALYZE',
         resource_type='DOCTOR_SUMMARY',
         patient_id=patient_id,
@@ -882,9 +904,9 @@ def generate_partner_update(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='GENERATE',
         resource_type='PARTNER_UPDATE',
         patient_id=patient_id,
@@ -921,9 +943,9 @@ def get_cycle_statistics(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='CYCLE_STATS',
         patient_id=patient_id,
@@ -966,9 +988,9 @@ def get_bbt_chart_data(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='READ',
         resource_type='BBT_CHART',
         patient_id=patient_id,
@@ -1081,9 +1103,9 @@ def export_cycle_summary_text(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='EXPORT',
         resource_type='CYCLE_SUMMARY',
         patient_id=patient_id,
@@ -1141,9 +1163,9 @@ def export_emergency_card(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='EXPORT',
         resource_type='EMERGENCY_CARD',
         patient_id=patient_id,
@@ -1196,9 +1218,9 @@ def validate_fertility_entry(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='VALIDATE',
         resource_type='FERTILITY_VALIDATION',
         patient_id=patient_id,
@@ -1243,7 +1265,7 @@ def create_or_update_fertility_entry(
     current_user = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'patient']:
+    if current_user.role.value not in ['doctor', 'patient']:
         raise HTTPException(status_code=403, detail="Only doctors and patients can write")
 
 
@@ -1309,9 +1331,9 @@ def create_or_update_fertility_entry(
     
     log_audit(
         db=db,
-        user_id=current_user.get('id'),
-        username=current_user.get('username'),
-        user_role=current_user.get('role'),
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
         action='CREATE' if action == 'created' else 'UPDATE',
         resource_type='FERTILITY_ENTRY',
         patient_id=patient_id,

@@ -8,8 +8,11 @@ from datetime import datetime
 from app.utils.audit import log_audit
 from app.dependencies import get_current_user
 from app.models import User
+from app.models import User, UserRole
 from app.organization.dependencies import get_current_organization
 from app.models import Organization
+from app.medical_record.models import MedicalRecord
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -86,7 +89,7 @@ def test_imports():
 def get_medical_records(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    current_user: User = Depends(get_current_user),  # ← CHANGED: User to dict
     org: Organization = Depends(get_current_organization),
     patient_id: Optional[str] = Query(None),
     category: Optional[str] = Query(None)
@@ -96,14 +99,14 @@ def get_medical_records(
         from app.medical_record import services
         
         # ← ADDED: Super admin check
-        if current_user.get('is_super_admin'):
+        if current_user.is_super_admin:
             raise HTTPException(status_code=403, detail="Access denied")
         
         # ← ADDED: Doctor filter
-        if current_user.get('role') == 'doctor':
+        if current_user.role.value == 'doctor':
             from app.models import PatientDoctorAssignment
             assignments = db.query(PatientDoctorAssignment.patient_id).filter(
-                PatientDoctorAssignment.doctor_id == current_user.get('id'),
+                PatientDoctorAssignment.doctor_id == current_user.id,
                 PatientDoctorAssignment.end_date == None
             ).all()
             assigned_patient_ids = [a[0] for a in assignments]
@@ -151,9 +154,9 @@ def get_medical_records(
         # ✅ AUDIT LOG (YOUR EXISTING CODE - with .get() changes)
         log_audit(
             db=db,
-            user_id=current_user.get('id'),  # ← CHANGED
-            username=current_user.get('username'),  # ← CHANGED
-            user_role=current_user.get('role'),  # ← CHANGED
+            user_id=current_user.id,  # ← CHANGED
+            username=current_user.username,  # ← CHANGED
+            user_role=current_user.role.value,
             action='READ',
             resource_type='MEDICAL_RECORDS',
             status='success',
@@ -213,7 +216,7 @@ def get_medical_record(
     """Get specific medical record by ID"""
     try:
         from app.medical_record import services
-        record = services.MedicalRecordService.get_medical_record_by_id(db, record_id)
+        record = services.MedicalRecordService.get_medical_record_by_id(db, record_id, org.id)
         if not record:
             raise HTTPException(status_code=404, detail="Medical record not found")
         
@@ -260,21 +263,85 @@ def get_medical_record(
 
 @router.post("/")
 def create_medical_record(
-        
     record_data: MedicalRecordCreateRequest, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'admin']:
+
+ # ========== ADD THESE DEBUG LINES ==========
+    print("=" * 50)
+    print("🔵 GENERIC ENDPOINT called")
+    print(f"🔍 Category: '{record_data.category}'")
+    print(f"🔍 Is Prescriptions? {record_data.category == 'Prescriptions'}")
+    print("=" * 50)
+    # ===========================================
+
+    from app.models import UserRole
+    
+    # Enum comparison - CORRECT WAY
+    if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Only doctors and admins can write")
+    
     """Create new medical record"""
     try:
         from app.medical_record import services
         record = services.MedicalRecordService.create_medical_record(db, record_data.dict(), org.id)
         
-        # ✅ AUDIT LOG
+        # ========== AUTO-CREATE PHARMACY VOUCHER ==========
+        if record_data.category == 'Prescriptions':
+            from app.models import PrescriptionVoucher
+            import secrets
+            from datetime import datetime, timedelta
+            
+            print(f"🔍 Auto-creating voucher for prescription: {record.id}")
+            
+            existing_voucher = db.query(PrescriptionVoucher).filter(
+                PrescriptionVoucher.medical_record_id == record.id
+            ).first()
+            
+            if not existing_voucher:
+                voucher = PrescriptionVoucher(
+                    prescription_code=f"RX-{secrets.token_hex(4).upper()}",
+                    patient_id=int(record_data.patient_id),
+                    doctor_id=current_user.id,
+                    medication_name=record_data.details.get('medication', record_data.type),
+                    strength=record_data.details.get('strength', ''),
+                    dosage=record_data.details.get('dosage', ''),
+                    quantity=int(record_data.details.get('quantity', 1)),
+                    medical_record_id=record.id,
+                    status='active',
+                    created_at=datetime.utcnow(),
+                    expires_at=datetime.utcnow() + timedelta(days=90)
+                )
+                db.add(voucher)
+                db.commit()
+                print(f"✅ Auto-created pharmacy voucher: {voucher.prescription_code}")
+                
+                # Audit log for voucher creation
+                log_audit(
+                    db=db,
+                    user_id=current_user.id,
+                    username=current_user.username,
+                    user_role=current_user.role.value,
+                    action='CREATE_VOUCHER',
+                    resource_type='PRESCRIPTION_VOUCHER',
+                    resource_id=voucher.id,
+                    patient_id=int(record_data.patient_id),
+                    status='success',
+                    purpose='TREATMENT',
+                    ip_address=request.client.host,
+                    user_agent=request.headers.get('user-agent'),
+                    new_value={
+                        "prescription_code": voucher.prescription_code,
+                        "medication_name": voucher.medication_name,
+                        "medical_record_id": record.id
+                    }
+                )
+        # ===================================================
+        
+        # Audit log for medical record creation
         log_audit(
             db=db,
             user_id=current_user.id,
@@ -282,6 +349,7 @@ def create_medical_record(
             user_role=current_user.role.value,
             action='CREATE',
             resource_type='MEDICAL_RECORD',
+            resource_id=record.id,
             patient_id=int(record_data.patient_id),
             status='success',
             purpose='TREATMENT',
@@ -298,6 +366,8 @@ def create_medical_record(
         logger.error(f"Error creating record: {e}")
         raise HTTPException(status_code=500, detail="Error creating medical record")
 
+
+
 @router.put("/{record_id}")
 def update_medical_record(
         
@@ -308,13 +378,13 @@ def update_medical_record(
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'admin']:
+    if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Update medical record"""
     try:
         from app.medical_record import services
         # Get old record for audit
-        old_record = services.MedicalRecordService.get_medical_record_by_id(db, record_id)
+        old_record = services.MedicalRecordService.get_medical_record_by_id(db, record_id, org.id)
         
         record = services.MedicalRecordService.update_medical_record(db, record_id, record_data.dict())
         
@@ -346,24 +416,51 @@ def update_medical_record(
 
 @router.delete("/{record_id}")
 def delete_medical_record(
-        
     record_id: str, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'admin']:
+    from app.models import UserRole, PrescriptionVoucher, PrescriptionShare
+    
+    # Enum comparison - CORRECT WAY
+    if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Only doctors and admins can write")
-    """Delete medical record"""
+    
     try:
         from app.medical_record import services
-        # Get record for audit before deletion
-        old_record = services.MedicalRecordService.get_medical_record_by_id(db, record_id)
         
-        result = services.MedicalRecordService.delete_medical_record(db, record_id)
+        # Get the record before deletion
+        old_record = services.MedicalRecordService.get_medical_record_by_id(db, record_id, org.id)
         
-        # ✅ AUDIT LOG
+        if not old_record:
+            raise HTTPException(status_code=404, detail="Medical record not found")
+        
+        # ========== CASCADE DELETE FOR PRESCRIPTIONS ==========
+        if old_record.category == 'Prescriptions':
+            # Find the voucher linked to this medical record
+            voucher = db.query(PrescriptionVoucher).filter(
+                PrescriptionVoucher.medical_record_id == record_id
+            ).first()
+            
+            if voucher:
+                # Delete all share records for this voucher
+                db.query(PrescriptionShare).filter(
+                    PrescriptionShare.prescription_id == voucher.id
+                ).delete()
+                
+                # Delete the voucher
+                db.delete(voucher)
+                print(f"✅ Deleted voucher and shares for medical record: {record_id}")
+        # =====================================================
+        
+        # Delete the medical record
+        result = services.MedicalRecordService.delete_medical_record(db, record_id, org.id)
+        
+        db.commit()
+        
+        # Audit log
         log_audit(
             db=db,
             user_id=current_user.id,
@@ -371,22 +468,33 @@ def delete_medical_record(
             user_role=current_user.role.value,
             action='DELETE',
             resource_type='MEDICAL_RECORD',
-            resource_id=int(record_id) if record_id.isdigit() else None,
-            patient_id=int(old_record.patient_id) if old_record and hasattr(old_record, 'patient_id') else None,
+            resource_id=record_id,
+            patient_id=int(old_record.patient_id) if old_record.patient_id and old_record.patient_id.isdigit() else None,
             status='success',
             purpose='TREATMENT',
             ip_address=request.client.host,
             user_agent=request.headers.get('user-agent'),
-            old_value=old_record.dict() if old_record else None
+            old_value={
+                "id": old_record.id,
+                "patient_id": old_record.patient_id,
+                "patient_name": old_record.patient_name,
+                "type": old_record.type,
+                "category": old_record.category,
+                "date": old_record.date
+            }
         )
         
         return {
             "message": "Medical record deleted successfully",
             "deleted_id": record_id
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting record {record_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error deleting medical record")
+        raise HTTPException(status_code=500, detail=f"Error deleting medical record: {str(e)}")
+
 
 @router.post("/lab-results")
 def create_lab_result(
@@ -397,7 +505,7 @@ def create_lab_result(
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'admin']:
+    if current_user.role.value not in ['doctor', 'admin']:
         raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Create lab result"""
     try:
@@ -457,7 +565,7 @@ def get_lab_results(
     """Get all lab results"""
     try:
         from app.medical_record import services
-        records = services.MedicalRecordService.get_medical_records(db)
+        records = services.MedicalRecordService.get_medical_records(db, org.id)
         lab_results = [r for r in records if getattr(r, 'category', None) == 'Lab Results']
         
         # ✅ AUDIT LOG
@@ -485,14 +593,20 @@ def get_lab_results(
 
 @router.post("/prescriptions")
 def create_prescription(
-        
     prescription_data: PrescriptionRequest, 
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.get('role') not in ['doctor', 'admin']:
+
+# ========== ADD THESE DEBUG LINES ==========
+    print("=" * 50)
+    print("🔵 PRESCRIPTIONS ENDPOINT called")
+    print(f"🔍 Medication: '{prescription_data.medication}'")
+    print("=" * 50)
+    # ===========================================
+    if current_user.role.value not in ['doctor', 'admin']:
         raise HTTPException(status_code=403, detail="Only doctors and admins can write")
     """Create prescription"""
     try:
@@ -543,6 +657,34 @@ def create_prescription(
             new_value=prescription_dict
         )
         
+        # ========== AUTO-CREATE PHARMACY VOUCHER ==========
+        from app.models import PrescriptionVoucher
+        import secrets
+        
+        
+        existing_voucher = db.query(PrescriptionVoucher).filter(
+            PrescriptionVoucher.medical_record_id == record.id
+        ).first()
+        
+        if not existing_voucher:
+            voucher = PrescriptionVoucher(
+                prescription_code=f"RX-{secrets.token_hex(4).upper()}",
+                patient_id=int(prescription_data.patient_id),
+                doctor_id=current_user.id,
+                medication_name=prescription_data.medication,
+                strength="",
+                dosage=prescription_data.dosage,
+                quantity=1,
+                medical_record_id=record.id,
+                status='active',
+                created_at=datetime.utcnow(),
+                expires_at=datetime.utcnow() + timedelta(days=90)
+            )
+            db.add(voucher)
+            db.commit()
+            print(f"✅ Auto-created pharmacy voucher: {voucher.prescription_code}")
+        # ===================================================
+        
         return {
             "message": "Prescription created successfully",
             "prescription": record
@@ -551,6 +693,8 @@ def create_prescription(
         logger.error(f"Error creating prescription: {e}")
         print(f"❌ Detailed error: {str(e)}")
         raise HTTPException(status_code=500, detail="Error creating prescription")
+
+
 
 @router.get("/prescriptions")
 def get_prescriptions(
@@ -562,7 +706,7 @@ def get_prescriptions(
     """Get all prescriptions"""
     try:
         from app.medical_record import services
-        records = services.MedicalRecordService.get_medical_records(db)
+        records = services.MedicalRecordService.get_medical_records(db, org.id)
         prescriptions = [r for r in records if getattr(r, 'category', None) == 'Prescriptions']
         
         # ✅ AUDIT LOG
@@ -599,7 +743,7 @@ def get_patient_records(
     """Get all records for a specific patient"""
     try:
         from app.medical_record import services
-        records = services.MedicalRecordService.get_medical_records(db)
+        records = services.MedicalRecordService.get_medical_records(db, org.id)
         patient_records = [r for r in records if getattr(r, 'patient_id', None) == patient_id]
         
         # ✅ AUDIT LOG
@@ -638,7 +782,7 @@ def get_records_by_category(
     """Get all records for a specific category"""
     try:
         from app.medical_record import services
-        records = services.MedicalRecordService.get_medical_records(db)
+        records = services.MedicalRecordService.get_medical_records(db, org.id)
         category_records = [r for r in records if getattr(r, 'category', '').lower() == category.lower()]
         
         # ✅ AUDIT LOG

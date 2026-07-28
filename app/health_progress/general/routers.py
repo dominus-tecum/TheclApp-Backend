@@ -3,7 +3,7 @@ from app.database import get_db
 from .models import GeneralHealthEntry
 from . import services, schemas
 from app.dependencies import get_current_user  # ← ADD THIS
-from app.models import User  # ← ADD THIS
+from app.models import User, UserRole  # ← ADD UserRole
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.utils.audit import log_audit
 
@@ -78,7 +78,23 @@ async def get_all_general_entries(
 ):
     try:
         entries = db.query(GeneralHealthEntry).all()
-        #entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+                # ========== ROLE-BASED ACCESS CONTROL ==========
+        if current_user.role == UserRole.DOCTOR:
+            from app.models import PatientDoctorAssignment
+            assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.id,
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            patient_ids = [a[0] for a in assignments]
+            
+            if not patient_ids:
+                entries = []
+            else:
+                entries = [e for e in entries if int(e.patient_id) in patient_ids]
+                
+        elif current_user.role == UserRole.PATIENT:
+            entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        # ========================================================
         
         # ✅ ADD AUDIT LOG
         log_audit(

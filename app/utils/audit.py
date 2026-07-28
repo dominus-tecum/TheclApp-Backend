@@ -30,8 +30,8 @@ def log_audit(
         patient_id=patient_id,
         status=status,
         purpose=purpose,
-        old_value=json.dumps(old_value) if old_value else None,
-        new_value=json.dumps(new_value) if new_value else None,
+        old_value=json.dumps(old_value, default=str) if old_value else None,
+        new_value=json.dumps(new_value, default=str) if new_value else None,
         ip_address=ip_address,
         user_agent=user_agent,
         created_at=datetime.now()

@@ -9,7 +9,7 @@ from app.health_progress.burn_care.models import BurnCareEntry
 from app.health_progress.burn_care.schemas import BurnCareCreate, BurnCareResponse, BurnCareCheckResponse
 from app.health_progress.burn_care.services import BurnCareService
 from app.dependencies import get_current_user  # ← ADD THIS
-from app.models import User  # ← ADD THIS
+from app.models import User, UserRole  # ← ADD UserRole
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -227,7 +227,23 @@ async def get_all_burn_care_entries(
 ):
     try:
         entries = BurnCareService.get_all_burn_care_entries(db, skip=skip, limit=limit)
-        #entries = [e for e in entries if e.patient_id == str(current_user.id)]
+        # ========== ROLE-BASED ACCESS CONTROL ==========
+        if current_user.role == UserRole.DOCTOR:
+            from app.models import PatientDoctorAssignment
+            assignments = db.query(PatientDoctorAssignment.patient_id).filter(
+                PatientDoctorAssignment.doctor_id == current_user.id,
+                PatientDoctorAssignment.end_date == None
+            ).all()
+            patient_ids = [a[0] for a in assignments]
+            
+            if not patient_ids:
+                entries = []
+            else:
+                entries = [e for e in entries if int(e.patient_id) in patient_ids]
+                
+        elif current_user.role == UserRole.PATIENT:
+            entries = [e for e in entries if str(e.patient_id) == str(current_user.id)]
+        # ========================================================
         
         # ✅ ADD THIS AUDIT LOG
         log_audit(

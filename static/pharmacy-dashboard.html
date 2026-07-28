@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmacy Dashboard - TheClapp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f4f8;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #0f2b3d 0%, #1a3a4f 100%);
+            color: white;
+            padding: 20px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 12px; }
+        .pharmacy-name { font-size: 14px; opacity: 0.8; margin-top: 4px; }
+        .btn-change-password { background: #f59e0b; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 12px; }
+        .btn-logout { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+      
+        .main-container { max-width: 1200px; margin: 0 auto; padding: 32px; }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .password-wrapper {
+            position: relative;
+        }
+        .password-wrapper input {
+            padding-right: 45px;
+        }
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #64748b;
+            font-size: 20px;
+        }
+        .tab-active {
+            background: #2d6a4f;
+            color: white;
+        }
+        .tab-inactive {
+            background: #e2e8f0;
+            color: #1a2a3a;
+        }
+        .view-prescription-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 6px;
+        }
+        .sold-btn {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .sold-badge {
+            background: #dcfce7;
+            color: #16a34a;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .prescription-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+        .prescription-modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .card h2 {
+            font-size: 20px;
+            color: #1a2a3a;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .form-group { margin-bottom: 16px; }
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+        }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        button {
+            background: #2d6a4f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #1b4d3e; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-secondary { background: #64748b; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; font-weight: 600; color: #0f2b3d; }
+        .alert {
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        .alert-success { background: #dcfce7; color: #16a34a; border: 1px solid #16a34a; }
+        .alert-error { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
+        .alert-warning { background: #fef3c7; color: #d97706; border: 1px solid #d97706; }
+        .hidden { display: none; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+        }
+        .stat-number { font-size: 32px; font-weight: 800; color: #2d6a4f; }
+        .stat-label { font-size: 12px; color: #64748b; margin-top: 8px; }
+        .action-buttons { display: flex; gap: 8px; }
+        .edit-btn { background: #3b82f6; padding: 4px 12px; font-size: 12px; }
+        .delete-btn { background: #dc2626; padding: 4px 12px; font-size: 12px; }
+        .login-section { max-width: 450px; margin: 100px auto; }
+        .upload-area {
+            border: 2px dashed #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 16px;
+        }
+        .btn-change-password {
+            background: #f59e0b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 12px;
+        }
+
+        .collapsible-header {
+            display: flex;
+            -content: space-between;
+            align-items: center;
+            cursor: pointer;
+            -select: none;
+        }
+       .collapsible-header h2 {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        .toggle-list-btn {
+            background: #2d6a4f;
+            padding: 8px 20px;
+            font-size: 14px;
+            border-radius: 20px;
+        }
+        .toggle-list-btn:hover {
+            background: #1b4d3e;
+        }
+        .price-list-container {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .price-list-container.collapsed {
+            display: none;
+        }
+        .sort-badge {
+            background: #e2e8f0;
+            color: #1a2a3a;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 12px;
+        }
+
+        .btn-change-password:hover {
+            background: #d97706;
+        }
+        .upload-area:hover { background: #f8fafc; border-color: #2d6a4f; }
+        .csv-hint { font-size: 12px; color: #64748b; margin-top: 8px; }
+        .template-link { color: #2d6a4f; text-decoration: none; font-weight: 600; }
+        .template-link:hover { text-decoration: underline; }
+        .file-buttons { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .btn-excel { background: #217346; }
+        .btn-excel:hover { background: #185a3a; }
+        .btn-csv { background: #3b82f6; }
+        .btn-csv:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="loginSection" class="login-section">
+        <div class="card">
+            <h2 style="text-align: center;">🏥 Pharmacy Portal Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" required>
+                        <span class="toggle-password" onclick="toggleLoginPassword()">👁️</span>
+                    </div>
+                </div>
+                <button type="submit" style="width: 100%;">Login</button>
+            </form>
+            <div id="loginError" class="alert alert-error hidden" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- Pharmacy Dashboard -->
+    <div id="dashboardSection" class="hidden">
+        <div class="header">
+            <div>
+                <h1>🏥 Pharmacy Price Management</h1>
+                <div class="pharmacy-name" id="pharmacyName">Loading...</div>
+            </div>
+            <div>
+                <button class="btn-change-password" onclick="showChangePasswordModal()">🔑 Change Password</button>
+                <button class="btn-logout" onclick="logout()">🔓 Logout</button>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-number" id="medCount">0</div><div class="stat-label">Medications Listed</div></div>
+                <div class="stat-card"><div class="stat-number" id="avgPrice">0</div><div class="stat-label">Average Price (ETB)</div></div>
+                <div class="stat-card"><div class="stat-number" id="lastUpdate">-</div><div class="stat-label">Last Updated</div></div>
+            </div>
+
+            <!-- Add Single Medication -->
+            <div class="card">
+                <h2>➕ Add Medication</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Medication Name</label>
+                        <input type="text" id="medName" placeholder="e.g., Amoxicillin">
+                    </div>
+                    <div class="form-group">
+                        <label>Strength</label>
+                        <input type="text" id="medStrength" placeholder="e.g., 500mg">
+                    </div>
+                    <div class="form-group">
+                        <label>Price (ETB)</label>
+                        <input type="number" id="medPrice" placeholder="e.g., 85.00" step="0.01">
+                    </div>
+                </div>
+                <button onclick="addMedication()">➕ Add Medication</button>
+            </div>
+
+            <!-- Bulk Upload Section -->
+            <div class="card">
+                <h2>📤 Bulk Upload</h2>
+                <div class="file-buttons">
+                    <button class="btn-excel" onclick="document.getElementById('excelFile').click()">📊 Upload Excel File</button>
+                    <button class="btn-csv" onclick="document.getElementById('csvFile').click()">📄 Upload CSV File</button>
+                </div>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" style="display: none;" onchange="uploadFile('excel')">
+                <input type="file" id="csvFile" accept=".csv" style="display: none;" onchange="uploadFile('csv')">
+                <div class="upload-area" onclick="document.getElementById('excelFile').click()">
+                    <p>📁 Click to upload Excel or CSV file</p>
+                    <p class="csv-hint">Format: medication_name, strength, price</p>
+                    <p class="csv-hint">Example: Amoxicillin, 500mg, 85.00</p>
+                </div>
+                <a href="#" class="template-link" onclick="downloadTemplate('excel')">📥 Download Excel Template</a>
+                &nbsp;|&nbsp;
+                <a href="#" class="template-link" onclick="downloadTemplate('csv')">📥 Download CSV Template</a>
+                <div id="uploadMessage" class="alert hidden" style="margin-top: 16px;"></div>
+            </div>
+
+            <!-- Current Price List -->
+<div class="card">
+    <div class="collapsible-header" onclick="togglePriceList()">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <h2>📋 Your Price List</h2>
+            <span class="sort-badge">🔤 Sorted A-Z</span>
+        </div>
+        <button class="toggle-list-btn" id="toggleListBtn">▲ Hide List</button>
+    </div>
+    <div id="priceListContainer" class="price-list-container">
+        <div id="priceMessage" class="alert hidden"></div>
+        <div style="overflow-x: auto; margin-top: 20px;">
+            <table id="priceTable">
+                <thead>
+                    <tr><th>Medication</th><th>Strength</th><th>Price (ETB)</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="priceTableBody">
+                    <tr><td colspan="4">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+            <!-- Shared Prescriptions Section -->
+            <div class="card">
+                <h2>📋 Shared Prescriptions</h2>
+                <p style="margin-bottom: 16px; color: #64748b; font-size: 14px;">
+                    Patients have shared these prescriptions with you. 
+                    <strong>No patient information is visible.</strong>
+                </p>
+                
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button id="activePrescriptionsTab" class="tab-active" onclick="switchPrescriptionTab('active')" style="padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; background: #2d6a4f; color: white;">📋 Active</button>
+                    <button id="historyPrescriptionsTab" class="tab-inactive" onclick="switchPrescriptionTab('history')" style="padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; background: #e2e8f0; color: #1a2a3a;">📜 Sold History</button>
+                </div>
+                
+                <div id="activePrescriptionsPanel">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Medication</th>
+                                    <th>Strength</th>
+                                    <th>Dosage</th>
+                                    <th>Quantity</th>
+                                    <th>Shared At</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sharedPrescriptionsList">
+                                <tr><td colspan="7">Loading shared prescriptions...<\/td><\/tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="historyPrescriptionsPanel" style="display: none;">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Medication</th>
+                                    <th>Strength</th>
+                                    <th>Quantity</th>
+                                    <th>Sold At</th>
+                                </tr>
+                            </thead>
+                            <tbody id="prescriptionHistoryList">
+                                <tr><td colspan="4">Loading history...<\/td><\/tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = null;
+        let pharmacyData = null;
+        const BASE_URL = window.location.origin;
+
+        // Toggle login password visibility
+        function toggleLoginPassword() {
+            const field = document.getElementById('loginPassword');
+            const icon = event.target;
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.textContent = '🙈';
+            } else {
+                field.type = 'password';
+                icon.textContent = '👁️';
+            }
+        }
+
+        // Check for saved token
+        const savedToken = localStorage.getItem('pharmacyToken');
+        if (savedToken) {
+            authToken = savedToken;
+            checkAuth();
+        }
+
+        // Login form
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+
+            try {
+                const response = await fetch(`${BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.access_token) {
+                    authToken = data.access_token;
+                    localStorage.setItem('pharmacyToken', authToken);
+                    await checkAuth();
+                } else {
+                    errorDiv.textContent = data.detail || 'Invalid credentials';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Network error';
+                errorDiv.classList.remove('hidden');
+            }
+        });
+
+        async function checkAuth() {
+            try {
+                const response = await fetch(`${BASE_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const user = await response.json();
+
+                if (response.ok && user.role === 'pharmacy') {
+                    pharmacyData = user;
+                    document.getElementById('pharmacyName').innerHTML = `${user.name} (${user.email})`;
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('dashboardSection').classList.remove('hidden');
+                    loadPrices();
+                    loadStats();
+                    loadSharedPrescriptions();
+                } else {
+                    logout();
+                }
+            } catch (error) {
+                logout();
+            }
+        }
+
+        async function loadPrices() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/my-medications`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+
+                const tbody = document.getElementById('priceTableBody');
+                if (!data.length) {
+                    tbody.innerHTML = '<tr><td colspan="4">No medications added yet. Use the form above to add.<\/td><\/tr>';
+                    return;
+                }
+
+                // Sort alphabetically by medication name
+data.sort((a, b) => {
+    const nameA = (a.medication_name || '').toLowerCase();
+    const nameB = (b.medication_name || '').toLowerCase();
+    return nameA.localeCompare(nameB);
+});
+
+let html = '';
+data.forEach(item => {
+
+
+                    html += `<tr>
+                        <td>${escapeHtml(item.medication_name)}<\/td>
+                        <td>${escapeHtml(item.strength || '—')}<\/td>
+                        <td>${item.price.toFixed(2)} ETB<\/td>
+                        <td class="action-buttons">
+                            <button class="edit-btn" onclick="editPrice(${item.id}, '${escapeHtml(item.medication_name)}', '${escapeHtml(item.strength || '')}', ${item.price})">✏️ Edit<\/button>
+                            <button class="delete-btn" onclick="deletePrice(${item.id})">🗑️ Delete<\/button>
+                        <\/td>
+                    <\/tr>`;
+                });
+                tbody.innerHTML = html;
+                document.getElementById('medCount').innerText = data.length;
+            } catch (error) {
+                console.error('Error loading prices:', error);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/stats`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const stats = await response.json();
+                document.getElementById('avgPrice').innerText = stats.avg_price ? stats.avg_price.toFixed(2) : '0';
+                document.getElementById('lastUpdate').innerText = stats.last_update || '-';
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function addMedication() {
+            const name = document.getElementById('medName').value;
+            const strength = document.getElementById('medStrength').value;
+            const price = parseFloat(document.getElementById('medPrice').value);
+
+            if (!name || !price) {
+                showMessage('Please enter medication name and price', 'error', 'priceMessage');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/medications`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        medication_name: name,
+                        strength: strength || null,
+                        price: price
+                    })
+                });
+
+                if (response.ok) {
+                    showMessage('Medication added successfully', 'success', 'priceMessage');
+                    document.getElementById('medName').value = '';
+                    document.getElementById('medStrength').value = '';
+                    document.getElementById('medPrice').value = '';
+                    loadPrices();
+                    loadStats();
+                } else {
+                    const error = await response.json();
+                    showMessage(error.detail || 'Failed to add', 'error', 'priceMessage');
+                }
+            } catch (error) {
+                showMessage('Network error', 'error', 'priceMessage');
+            }
+        }
+
+
+        function togglePriceList() {
+    const container = document.getElementById('priceListContainer');
+    const btn = document.getElementById('toggleListBtn');
+    
+    if (container.classList.contains('collapsed')) {
+        container.classList.remove('collapsed');
+        btn.innerHTML = '▲ Hide List';
+    } else {
+        container.classList.add('collapsed');
+        btn.innerHTML = '▼ Show List';
+    }
+}
+
+
+
+        async function editPrice(id, currentName, currentStrength, currentPrice) {
+            const newName = prompt('Enter medication name:', currentName);
+            if (!newName) return;
+            const newStrength = prompt('Enter strength (e.g., 500mg):', currentStrength);
+            const newPrice = parseFloat(prompt('Enter price:', currentPrice));
+            if (isNaN(newPrice)) return;
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/medications/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        medication_name: newName,
+                        strength: newStrength || null,
+                        price: newPrice
+                    })
+                });
+
+                if (response.ok) {
+                    showMessage('Price updated successfully', 'success', 'priceMessage');
+                    loadPrices();
+                    loadStats();
+                } else {
+                    showMessage('Failed to update', 'error', 'priceMessage');
+                }
+            } catch (error) {
+                showMessage('Network error', 'error', 'priceMessage');
+            }
+        }
+
+        async function deletePrice(id) {
+            if (!confirm('Are you sure you want to delete this medication?')) return;
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/medications/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (response.ok) {
+                    showMessage('Medication deleted', 'success', 'priceMessage');
+                    loadPrices();
+                    loadStats();
+                } else {
+                    showMessage('Failed to delete', 'error', 'priceMessage');
+                }
+            } catch (error) {
+                showMessage('Network error', 'error', 'priceMessage');
+            }
+        }
+
+        async function uploadFile(type) {
+            const fileInput = type === 'excel' ? document.getElementById('excelFile') : document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/upload-prices`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    const msg = document.getElementById('uploadMessage');
+                    msg.className = 'alert alert-success';
+                    msg.innerHTML = `✅ ${result.added} medications added, ${result.skipped} skipped`;
+                    msg.classList.remove('hidden');
+                    setTimeout(() => msg.classList.add('hidden'), 5000);
+                    loadPrices();
+                    loadStats();
+                } else {
+                    showMessage(result.detail || 'Upload failed', 'error', 'uploadMessage');
+                }
+            } catch (error) {
+                showMessage('Network error', 'error', 'uploadMessage');
+            }
+            fileInput.value = '';
+        }
+
+        function downloadTemplate(type) {
+            if (type === 'excel') {
+                const data = [
+                    ['medication_name', 'strength', 'price'],
+                    ['Amoxicillin', '500mg', 85.00],
+                    ['Paracetamol', '500mg', 15.00],
+                    ['Metformin', '850mg', 120.00]
+                ];
+                let csvContent = data.map(row => row.join(',')).join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pharmacy_prices_template.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                alert('Excel template downloaded as CSV. Please convert to Excel if needed.');
+            } else {
+                const csvContent = 'medication_name,strength,price\nAmoxicillin,500mg,85.00\nParacetamol,500mg,15.00\nMetformin,850mg,120.00';
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pharmacy_prices_template.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        function showMessage(msg, type, elementId) {
+            const msgDiv = document.getElementById(elementId);
+            msgDiv.className = `alert alert-${type}`;
+            msgDiv.textContent = msg;
+            msgDiv.classList.remove('hidden');
+            setTimeout(() => msgDiv.classList.add('hidden'), 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function logout() {
+            localStorage.removeItem('pharmacyToken');
+            authToken = null;
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('dashboardSection').classList.add('hidden');
+            document.getElementById('loginForm').reset();
+        }
+
+        // Toggle password visibility
+        function togglePassword(fieldId) {
+            const field = document.getElementById(fieldId);
+            const icon = event.target;
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.textContent = '🙈';
+            } else {
+                field.type = 'password';
+                icon.textContent = '👁️';
+            }
+        }
+
+        // Password validation function
+        function validatePassword(password) {
+            const errors = [];
+            if (password.length < 8) {
+                errors.push("at least 8 characters");
+            }
+            if (!/[A-Z]/.test(password)) {
+                errors.push("one uppercase letter");
+            }
+            if (!/[0-9]/.test(password)) {
+                errors.push("one number");
+            }
+            if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+                errors.push("one special character");
+            }
+            return {
+                isValid: errors.length === 0,
+                errors: errors
+            };
+        }
+
+        // Real-time password strength indicator
+        function updatePasswordStrength() {
+            const password = document.getElementById('newPassword').value;
+            const validation = validatePassword(password);
+            const strengthDiv = document.getElementById('passwordStrength');
+            if (!password) {
+                strengthDiv.innerHTML = '';
+                return;
+            }
+            if (validation.isValid) {
+                strengthDiv.innerHTML = '✓ Strong password';
+                strengthDiv.style.color = '#16a34a';
+            } else {
+                strengthDiv.innerHTML = '✗ ' + validation.errors.join(', ');
+                strengthDiv.style.color = '#dc2626';
+            }
+        }
+
+        // Show password modal
+        function showChangePasswordModal() {
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            document.getElementById('passwordError').classList.add('hidden');
+            document.getElementById('passwordStrength').innerHTML = '';
+            document.getElementById('passwordModal').style.display = 'flex';
+        }
+
+        // Close password modal
+        function closePasswordModal() {
+            document.getElementById('passwordModal').style.display = 'none';
+        }
+
+        // Change password function
+        async function changePassword() {
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const errorDiv = document.getElementById('passwordError');
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                errorDiv.textContent = 'Please fill all fields';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            const validation = validatePassword(newPassword);
+            if (!validation.isValid) {
+                errorDiv.textContent = 'Password requirements: ' + validation.errors.join(', ');
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                errorDiv.textContent = 'New passwords do not match';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            if (newPassword === currentPassword) {
+                errorDiv.textContent = 'New password must be different from current password';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/pharmacy/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('✅ Password changed successfully! Please login again.');
+                    closePasswordModal();
+                    logout();
+                } else {
+                    errorDiv.textContent = data.detail || 'Failed to change password';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        // Add event listener for real-time password validation
+        document.addEventListener('DOMContentLoaded', function() {
+            const newPasswordInput = document.getElementById('newPassword');
+            if (newPasswordInput) {
+                newPasswordInput.addEventListener('input', updatePasswordStrength);
+            }
+        });
+
+        // ========== PRESCRIPTION MANAGEMENT FUNCTIONS ==========
+        
+        let currentPrescriptions = [];
+
+        function switchPrescriptionTab(tab) {
+            const activeTab = document.getElementById('activePrescriptionsTab');
+            const historyTab = document.getElementById('historyPrescriptionsTab');
+            const activePanel = document.getElementById('activePrescriptionsPanel');
+            const historyPanel = document.getElementById('historyPrescriptionsPanel');
+            
+            if (tab === 'active') {
+                activeTab.style.background = '#2d6a4f';
+                activeTab.style.color = 'white';
+                historyTab.style.background = '#e2e8f0';
+                historyTab.style.color = '#1a2a3a';
+                activePanel.style.display = 'block';
+                historyPanel.style.display = 'none';
+                loadSharedPrescriptions();
+            } else {
+                activeTab.style.background = '#e2e8f0';
+                activeTab.style.color = '#1a2a3a';
+                historyTab.style.background = '#2d6a4f';
+                historyTab.style.color = 'white';
+                activePanel.style.display = 'none';
+                historyPanel.style.display = 'block';
+                loadPrescriptionHistory();
+            }
+        }
+
+        async function loadSharedPrescriptions() {
+            try {
+                const tbody = document.getElementById('sharedPrescriptionsList');
+                
+                if (!tbody) {
+                    console.log('Table body not found yet, waiting...');
+                    setTimeout(loadSharedPrescriptions, 500);
+                    return;
+                }
+                
+                const response = await fetch(`${BASE_URL}/api/prescription/pharmacy/shared-prescriptions`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const prescriptions = await response.json();
+                currentPrescriptions = prescriptions;
+                
+                if (!prescriptions.length) {
+                    tbody.innerHTML = '<tr><td colspan="7">No shared prescriptions yet.<\/td><\/tr>';
+                    return;
+                }
+                
+                let html = '';
+                prescriptions.forEach(p => {
+                    const sharedDate = new Date(p.shared_at).toLocaleString();
+                    html += `<tr>
+                        <td><strong>${escapeHtml(p.medication_name)}</strong><\/td>
+                        <td>${escapeHtml(p.strength)}<\/td>
+                        <td>${escapeHtml(p.dosage)}<\/td>
+                        <td>${p.quantity || 1}<\/td>
+                        <td>${sharedDate}<\/td>
+                        <td>${p.viewed ? '<span class="sold-badge">Viewed ✓</span>' : '<span style="color:#f59e0b;">📬 New</span>'}<\/td>
+                        <td>
+                            <button class="view-prescription-btn" onclick="viewPrescription('${p.share_token}')">👁️ View</button>
+                            <button class="sold-btn" onclick="markAsSold('${p.share_token}', ${p.prescription_id})">💰 Sold</button>
+                        <\/td>
+                    <\/tr>`;
+                });
+                
+                tbody.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading shared prescriptions:', error);
+                const tbody = document.getElementById('sharedPrescriptionsList');
+                if (tbody) {
+                    tbody.innerHTML = '</table><td colspan="7">Error loading prescriptions<\/td><\/tr>';
+                }
+            }
+        }
+
+        async function viewPrescription(shareToken) {
+            try {
+                const response = await fetch(`${BASE_URL}/api/prescription/pharmacy/view-prescription/${shareToken}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const modalHtml = `
+                        <div id="prescriptionModal" class="prescription-modal" style="display: flex;">
+                            <div class="prescription-modal-content">
+                                <h3 style="margin-bottom: 16px;">📋 Prescription Details</h3>
+                                <div style="margin-bottom: 12px;"><strong>Medication:</strong> ${escapeHtml(data.medication_name)}</div>
+                                <div style="margin-bottom: 12px;"><strong>Strength:</strong> ${escapeHtml(data.strength)}</div>
+                                <div style="margin-bottom: 12px;"><strong>Dosage:</strong> ${escapeHtml(data.dosage)}</div>
+                                <div style="margin-bottom: 12px;"><strong>Quantity:</strong> ${data.quantity}</div>
+                                <div style="margin-bottom: 12px;"><strong>Shared at:</strong> ${new Date(data.shared_at).toLocaleString()}</div>
+                                <div style="margin-top: 20px; padding: 12px; background: #fef3c7; border-radius: 8px;">
+                                    ⚠️ <strong>Important:</strong> Click "Sold" only after dispensing the medication.
+                                </div>
+                                <button onclick="closePrescriptionModal()" style="margin-top: 20px; width: 100%;">Close</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    const existingModal = document.getElementById('prescriptionModal');
+                    if (existingModal) existingModal.remove();
+                    
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    loadSharedPrescriptions();
+                } else {
+                    alert(data.detail || 'Prescription not found or already sold');
+                }
+            } catch (error) {
+                console.error('Error viewing prescription:', error);
+                alert('Error loading prescription details');
+            }
+        }
+
+        function closePrescriptionModal() {
+            const modal = document.getElementById('prescriptionModal');
+            if (modal) modal.remove();
+        }
+
+        async function markAsSold(shareToken, prescriptionId) {
+            if (!confirm('⚠️ CONFIRM SALE\n\nHave you dispensed the medication?\n\nOnce confirmed, this prescription will be permanently deactivated.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/prescription/pharmacy/mark-sold`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        share_token: shareToken,
+                        prescription_id: prescriptionId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert(`✅ ${data.message}\n\nPrescription has been deactivated.`);
+                    loadSharedPrescriptions();
+                    loadPrescriptionHistory();
+                } else {
+                    alert('❌ Error: ' + (data.detail || data.message || 'Failed to mark as sold'));
+                }
+            } catch (error) {
+                console.error('Error marking as sold:', error);
+                alert('Network error. Please try again.');
+            }
+        }
+
+        async function loadPrescriptionHistory() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/prescription/pharmacy/prescription-history`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const history = await response.json();
+                
+                const tbody = document.getElementById('prescriptionHistoryList');
+                
+                if (!history.length) {
+                    tbody.innerHTML = '<tr><td colspan="4">No sold prescription history.<\/td><\/tr>';
+                    return;
+                }
+                
+                let html = '';
+                history.forEach(item => {
+                    const soldDate = new Date(item.sold_at).toLocaleString();
+                    html += `<tr>
+                        <td><strong>${escapeHtml(item.medication_name)}</strong><\/td>
+                        <td>${escapeHtml(item.strength)}<\/td>
+                        <td>${item.quantity}<\/td>
+                        <td>${soldDate}<\/td>
+                    <\/tr>`;
+                });
+                
+                tbody.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading prescription history:', error);
+                document.getElementById('prescriptionHistoryList').innerHTML = '<tr><td colspan="4">Error loading history<\/td><\/tr>';
+            }
+        }
+    </script>
+
+    <!-- Change Password Modal -->
+    <div id="passwordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 20px; padding: 32px; max-width: 450px; width: 90%;">
+            <h3 style="margin-bottom: 20px; color: #1a2a3a;">🔐 Change Password</h3>
+            
+            <div class="form-group">
+                <label>Current Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="currentPassword" placeholder="Enter current password">
+                    <span class="toggle-password" onclick="togglePassword('currentPassword')">👁️</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>New Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="newPassword" placeholder="Enter new password">
+                    <span class="toggle-password" onclick="togglePassword('newPassword')">👁️</span>
+                </div>
+                <div id="passwordStrength" style="font-size: 12px; margin-top: 5px;"></div>
+            </div>
+            
+            <div class="form-group">
+                <label>Confirm New Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="confirmPassword" placeholder="Confirm new password">
+                    <span class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</span>
+                </div>
+            </div>
+            
+            <div id="passwordError" class="alert alert-error hidden" style="margin-bottom: 16px;"></div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button onclick="changePassword()" style="flex: 1;">Update Password</button>
+                <button onclick="closePasswordModal()" style="background: #64748b; flex: 1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

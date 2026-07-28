@@ -12,7 +12,7 @@ async def get_current_organization(
     """Get current user's organization and verify access"""
     
     # Get user from database
-    user = db.query(User).filter(User.id == int(current_user.get('id'))).first()
+    user = db.query(User).filter(User.id == int(current_user.id)).first()
     
     if not user:
         raise HTTPException(status_code=403, detail="User not found")
@@ -30,7 +30,7 @@ async def get_current_organization(
         raise HTTPException(status_code=403, detail="Organization is inactive")
     
     # Check subscription status (skip for admin users)
-    if current_user.get('role') != 'admin':
+    if current_user.role.value != 'admin':
         if org.subscription_status not in ['active', 'trial']:
             raise HTTPException(status_code=403, detail="Subscription expired")
     

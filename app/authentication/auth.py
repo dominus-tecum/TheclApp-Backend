@@ -42,7 +42,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -89,18 +89,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
     
     # CONVERT TO DICTIONARY - THIS IS CRITICAL
-    user_dict = {
-        "id": str(user.id),
-        "username": user.username,
-        "email": user.email,
-        "name": user.name,
-        "role": user.role.value,
-        "phone_number": user.phone_number,
-        "department": user.department,
-        "specialization": user.specialization,
-        "is_super_admin": user.is_super_admin == 1,
-        "organization_id": user.organization_id 
-    }
+    #user_dict = {
+    #    "id": str(user.id),
+    #    "username": user.username,
+    #    "email": user.email,
+    #    "name": user.name,
+    #    "role": user.role.value,
+    #    "phone_number": user.phone_number,
+    #    "department": user.department,
+    #    "specialization": user.specialization,
+    #    "is_super_admin": user.is_super_admin == 1,
+    #    "organization_id": user.organization_id 
+    #}
     
+    #print(f"✅ [AUTH] Returning user: {user.username} (ID: {user.id})")
+    #return user_dict
+
+
     print(f"✅ [AUTH] Returning user: {user.username} (ID: {user.id})")
-    return user_dict
+    return user    

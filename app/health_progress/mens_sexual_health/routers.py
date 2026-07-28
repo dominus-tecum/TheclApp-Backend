@@ -16,9 +16,12 @@ import json
 import os
 import uuid
 import shutil
-from .models import MensHealthIntake, MensHealthEntry, MensHealthPhoto, MensHealthStatus, MensHealthCalibration
+from .models import MensHealthIntake, MensHealthEntry, MensHealthPhoto, MensHealthStatus, MensHealthCalibration, MensHealthReport
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Body
-from typing import Dict, Optional  # Add Dict to imports
+from typing import Dict, Optional  # Add Dict to 
+import cv2
+import numpy as np
+
 
 router = APIRouter()
 
@@ -144,6 +147,59 @@ def generate_recommendations(answers: IntakeAnswers) -> Dict[str, Any]:
         results["performance_anxiety"]["reasons"].append("Performance anxiety reported")
     
     return results
+
+# ========== COMPATIBILITY DATA GENERATOR ==========
+
+def generate_compatibility_data(length_cm: float, girth_cm: float = None):
+    zones = [
+        {
+            "depth_range": "<10 cm",
+            "percentage": "15%",
+            "reaches": length_cm >= 10,
+            "zone": "Cervix Area",
+            "explanation": "The cervix is the narrow opening at the top of the vagina. Hitting it can be painful for many women. Study shows 15% of women has a depth less than 10cm.",
+            "tip": "Let her control depth. Avoid deep thrusting."
+        },
+        {
+            "depth_range": "10-12 cm",
+            "percentage": "35%",
+            "reaches": length_cm >= 10,
+            "zone": "A-Spot Zone",
+            "explanation": "The A-spot (anterior fornix) is a highly erogenous zone. Many women can orgasm from A-spot stimulation. 35% of women has a vaginal depth of 10-12cm",
+            "tip": "Doggy style angled up works best."
+        },
+        {
+            "depth_range": "12-14 cm",
+            "percentage": "35%",
+            "reaches": length_cm >= 12,
+            "zone": "Posterior Fornix",
+            "explanation": "The deepest part of the vagina, located behind the cervix. Stimulation here can produce deep, intense pleasure. Study shows 35% of women has a depth from 12-14cm.",
+            "tip": "Missionary with pillow under hips is ideal."
+        },
+        {
+            "depth_range": ">14 cm",
+            "percentage": "15%",
+            "reaches": length_cm >= 14,
+            "zone": "Full Stimulation",
+            "explanation": "You can stimulate both A-spot and G-spot simultaneously. The G-spot is located 5-8 cm inside on the front wall.",
+            "tip": "Focus on angle, not depth. Cowgirl gives her control."
+        }
+    ]
+    
+    zones_reached = sum(1 for z in zones if z["reaches"])
+    percentage_reached = (zones_reached / len(zones)) * 100
+    
+    return {
+        "length_cm": length_cm,
+        "girth_cm": girth_cm,
+        "zones": zones,
+        "summary": {
+            "percentage_reached": round(percentage_reached, 1),
+            "can_reach_aspot": length_cm >= 10,
+            "can_reach_deepest": length_cm >= 12,
+            "can_reach_full": length_cm >= 14
+        }
+    }    
 
 
 # ========== ENDPOINTS ==========
@@ -492,7 +548,7 @@ async def upload_photo(
             status='success',
             ip_address=request.client.host if request else None,
             user_agent=request.headers.get('user-agent') if request else None,
-            details={"condition": condition, "consent_shared": consent_shared}
+            new_value={"condition": condition, "consent_shared": consent_shared}
         )
         
         return {
@@ -652,17 +708,17 @@ def get_all_entries(
 def get_active_intake(
     request: Request,
     user_id: Optional[int] = None,
-    
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    org: Organization = Depends(get_current_organization) 
+    org: Organization = Depends(get_current_organization)
 ):
-    # Determine which user to fetch
-    target_user_id = user_id if user_id else current_user.id
-    
-    # Only admin can view other users' intakes
-    if user_id and user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # If user_id is provided and current user is doctor, get that user's intake
+    if user_id is not None:
+        if current_user.role.value not in ["doctor", "admin"]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        target_user_id = user_id
+    else:
+        target_user_id = current_user.id
     
     intake = db.query(MensHealthIntake).filter(
         MensHealthIntake.patient_id == target_user_id,
@@ -673,11 +729,21 @@ def get_active_intake(
     if not intake:
         return {"has_intake": False}
     
-    # Extract recommended conditions
-    recommendations = intake.recommendations or {}
-    conditions = [cond for cond, data in recommendations.items() if data.get("recommended")]
+    # Parse recommendations if it's a string
+    recommendations = intake.recommendations
+    if isinstance(recommendations, str):
+        import json
+        recommendations = json.loads(recommendations)
     
+    conditions = []
     condition_names = []
+    
+    # Handle both formats
+    if "conditions" in recommendations:
+        rec_data = recommendations["conditions"]
+    else:
+        rec_data = recommendations
+    
     names = {
         "size_concern": "Size & Girth",
         "erectile_dysfunction": "Erectile Dysfunction",
@@ -686,11 +752,13 @@ def get_active_intake(
         "peyronies": "Peyronie's Disease",
         "performance_anxiety": "Performance Anxiety"
     }
-    for cond in conditions:
-        if cond in names:
-            condition_names.append(names[cond])
-
-    # ✅ ADD AUDIT LOG HERE
+    
+    for cond, data in rec_data.items():
+        if isinstance(data, dict) and data.get("recommended"):
+            conditions.append(cond)
+            if cond in names:
+                condition_names.append(names[cond])
+    
     log_audit(
         db=db,
         user_id=current_user.id,
@@ -698,7 +766,7 @@ def get_active_intake(
         user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
         action='READ',
         resource_type='MENS_HEALTH_INTAKE',
-        resource_id=intake.id,
+        resource_id=intake.id if intake else None,
         patient_id=target_user_id,
         status='success',
         ip_address=request.client.host,
@@ -710,8 +778,87 @@ def get_active_intake(
         "intake_id": intake.id,
         "conditions": conditions,
         "condition_names": condition_names,
+        "answers": intake.answers  # ← Returns full answers
+    }
+
+
+
+@router.get("/intake/{patient_id}")
+def get_patient_intake(
+    patient_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    # Doctor only
+    if current_user.role.value != UserRole.DOCTOR.value:
+        raise HTTPException(status_code=403, detail="Doctor access required")
+    
+    # Same logic as /intake/active but for specific patient
+    intake = db.query(MensHealthIntake).filter(
+        MensHealthIntake.patient_id == patient_id,
+        MensHealthIntake.is_active == True,
+        MensHealthIntake.organization_id == org.id
+    ).first()
+    
+    if not intake:
+        return {"has_intake": False}
+    
+    recommendations = intake.recommendations
+    if isinstance(recommendations, str):
+        import json
+        recommendations = json.loads(recommendations)
+    
+    conditions = []
+    condition_names = []
+    
+    if "conditions" in recommendations:
+        rec_data = recommendations["conditions"]
+    else:
+        rec_data = recommendations
+    
+    names = {
+        "size_concern": "Size & Girth",
+        "erectile_dysfunction": "Erectile Dysfunction",
+        "premature_ejaculation": "Premature Ejaculation",
+        "low_testosterone": "Low Testosterone",
+        "peyronies": "Peyronie's Disease",
+        "performance_anxiety": "Performance Anxiety"
+    }
+    
+    for cond, data in rec_data.items():
+        if isinstance(data, dict) and data.get("recommended"):
+            conditions.append(cond)
+            if cond in names:
+                condition_names.append(names[cond])
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+        action='READ',
+        resource_type='MENS_HEALTH_INTAKE',
+        resource_id=intake.id,
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {
+        "has_intake": True,
+        "intake_id": intake.id,
+        "patient_id": intake.patient_id,
+        "completed_at": intake.completed_at,
+        "conditions": conditions,
+        "condition_names": condition_names,
         "answers": intake.answers
     }
+
+
+
 
 @router.get("/approval-status")
 def get_approval_status(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),org: Organization = Depends(get_current_organization)):
@@ -749,8 +896,8 @@ def get_pending_users(
     current_user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if current_user.role.value != UserRole.DOCTOR.value:
+            raise HTTPException(status_code=403, detail="Doctor access required")
     
     pending = []
     
@@ -782,7 +929,7 @@ def get_pending_users(
         status='success',
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
-        details={"pending_count": len(pending)}
+        new_value={"pending_count": len(pending)}
     )
     
     return pending
@@ -795,8 +942,8 @@ def approve_intake(
     db: Session = Depends(get_db),
     org: Organization = Depends(get_current_organization)
 ):
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if current_user.role.value != UserRole.DOCTOR.value:
+        raise HTTPException(status_code=403, detail="Doctor access required")
     
     # Find active intake for this user (like Women's Health does)
     intake = db.query(MensHealthIntake).filter(
@@ -825,7 +972,373 @@ def approve_intake(
         status='success',
         ip_address=request.client.host,
         user_agent=request.headers.get('user-agent'),
-        details={"approved": True}
+        
     )
     
     return {"message": f"Intake approved for user {user_id}"}    
+
+# ========== REPORT ENDPOINTS ==========
+
+@router.post("/reports/share/{patient_id}")
+def share_report(
+    patient_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    """Doctor shares a compatibility report with patient"""
+    
+    if current_user.role.value != UserRole.DOCTOR.value:
+        raise HTTPException(status_code=403, detail="Doctor access required")
+    
+    patient = db.query(User).filter(
+        User.id == patient_id,
+        User.organization_id == org.id
+    ).first()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    entry = db.query(MensHealthEntry).filter(
+        MensHealthEntry.patient_id == patient_id,
+        MensHealthEntry.organization_id == org.id
+    ).order_by(MensHealthEntry.submission_date.desc()).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="No entries found for this patient")
+    
+    size_data = entry.condition_data.get("size_concern", {})
+    length_cm = float(size_data.get("length_cm", 0))
+    girth_cm = float(size_data.get("girth_cm", 0)) if size_data.get("girth_cm") else None
+    
+    if length_cm == 0:
+        raise HTTPException(status_code=400, detail="No size measurement found")
+    
+    compatibility_data = generate_compatibility_data(length_cm, girth_cm)
+    
+    existing_report = db.query(MensHealthReport).filter(
+        MensHealthReport.patient_id == patient_id,
+        MensHealthReport.status == "shared"
+    ).first()
+    
+    if existing_report:
+        existing_report.status = "expired"
+        existing_report.expires_at = datetime.now()
+        db.commit()
+    
+    report = MensHealthReport(
+        patient_id=patient_id,
+        doctor_id=current_user.id,
+        organization_id=org.id,
+        report_type="compatibility",
+        length_cm=length_cm,
+        girth_cm=girth_cm,
+        compatibility_data=compatibility_data,
+        status="draft"
+    )
+    
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    
+    report.status = "shared"
+    report.shared_at = datetime.now()
+    db.commit()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='CREATE',
+        resource_type='MENS_HEALTH_REPORT',
+        resource_id=report.id,
+        patient_id=patient_id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value={
+            "report_type": "compatibility",
+            "status": "shared",
+            "length_cm": length_cm
+        }
+    )
+    
+    return {
+        "message": "Report shared with patient",
+        "report_id": report.id,
+        "status": report.status
+    }
+
+
+@router.get("/reports/pending")
+def get_pending_report(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    """Patient checks if there's a new report waiting"""
+    
+    report = db.query(MensHealthReport).filter(
+        MensHealthReport.patient_id == current_user.id,
+        MensHealthReport.status == "shared",
+        MensHealthReport.organization_id == org.id
+    ).first()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='READ',
+        resource_type='MENS_HEALTH_REPORT',
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    if not report:
+        return {
+            "has_report": False,
+            "report_id": None,
+            "report_type": None,
+            "shared_at": None
+        }
+    
+    return {
+        "has_report": True,
+        "report_id": report.id,
+        "report_type": report.report_type,
+        "shared_at": report.shared_at
+    }
+
+
+@router.get("/reports/{report_id}")
+def get_report(
+    report_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    """Patient views their report"""
+    
+    report = db.query(MensHealthReport).filter(
+        MensHealthReport.id == report_id,
+        MensHealthReport.patient_id == current_user.id,
+        MensHealthReport.organization_id == org.id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    if report.status == "expired":
+        raise HTTPException(status_code=410, detail="Report has expired")
+    
+    if report.status == "draft":
+        raise HTTPException(status_code=403, detail="Report not yet shared")
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='READ',
+        resource_type='MENS_HEALTH_REPORT',
+        resource_id=report.id,
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent')
+    )
+    
+    return {
+        "id": report.id,
+        "report_type": report.report_type,
+        "status": report.status,
+        "length_cm": report.length_cm,
+        "girth_cm": report.girth_cm,
+        "compatibility_data": report.compatibility_data,
+        "shared_at": report.shared_at,
+        "viewed_at": report.viewed_at,
+        "created_at": report.created_at
+    }
+
+
+@router.put("/reports/{report_id}/mark-read")
+def mark_report_read(
+    report_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    """Patient marks report as read"""
+    
+    report = db.query(MensHealthReport).filter(
+        MensHealthReport.id == report_id,
+        MensHealthReport.patient_id == current_user.id,
+        MensHealthReport.organization_id == org.id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    if report.status == "viewed":
+        return {"message": "Report already marked as read"}
+    
+    report.status = "viewed"
+    report.viewed_at = datetime.now()
+    db.commit()
+    
+    log_audit(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        user_role=current_user.role.value,
+        action='UPDATE',
+        resource_type='MENS_HEALTH_REPORT',
+        resource_id=report.id,
+        patient_id=current_user.id,
+        status='success',
+        ip_address=request.client.host,
+        user_agent=request.headers.get('user-agent'),
+        new_value={"status": "viewed"}
+    )
+    
+    return {"message": "Report marked as read", "status": report.status}    
+
+
+
+
+@router.post("/calibrate")
+async def calibrate_grid(
+    file: UploadFile = File(...),
+    card_type: str = Form(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_organization)
+):
+    """
+    Calibrate using 1 Birr coin detection.
+    Returns pixels per cm for accurate measurement.
+    """
+    try:
+        # Save the image temporarily
+        upload_dir = f"uploads/calibration/{current_user.id}"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        file_extension = file.filename.split('.')[-1]
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(upload_dir, unique_filename)
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Known size of 1 Birr coin in cm (approximate diameter)
+        COIN_SIZE_CM = 2.8
+        
+        # Read image with OpenCV
+        img = cv2.imread(file_path)
+        if img is None:
+            raise HTTPException(status_code=400, detail="Could not read image")
+        
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Detect circles (coin) using Hough Circle Transform
+        circles = cv2.HoughCircles(
+            gray, 
+            cv2.HOUGH_GRADIENT, 
+            dp=1, 
+            minDist=50,
+            param1=50, 
+            param2=30, 
+            minRadius=20, 
+            maxRadius=150
+        )
+        
+        grid_size_pixels = None
+        
+        if circles is not None:
+            circles = np.round(circles[0, :]).astype("int")
+            # Use the first detected circle
+            (x, y, r) = circles[0]
+            diameter_pixels = r * 2
+            grid_size_pixels = diameter_pixels / COIN_SIZE_CM
+            print(f"✅ Coin detected: diameter = {diameter_pixels} pixels, {grid_size_pixels} px/cm")
+        else:
+            # Fallback: try alternative detection method
+            print("⚠️ No circle detected, trying alternative detection...")
+            
+            # Try using edge detection
+            edges = cv2.Canny(gray, 50, 150)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Find circular contours
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                perimeter = cv2.arcLength(contour, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * area / (perimeter * perimeter)
+                    if circularity > 0.7:  # Good circle approximation
+                        (x, y), radius = cv2.minEnclosingCircle(contour)
+                        if 20 < radius < 150:  # Reasonable coin size
+                            diameter_pixels = radius * 2
+                            grid_size_pixels = diameter_pixels / COIN_SIZE_CM
+                            print(f"✅ Coin detected via contour: {grid_size_pixels} px/cm")
+                            break
+        
+        # If still no detection, use default
+        if grid_size_pixels is None or grid_size_pixels <= 0:
+            print("⚠️ Coin not detected, using default calibration")
+            grid_size_pixels = 50.0  # Default fallback
+        
+        # Save calibration to database
+        calibration = MensHealthCalibration(
+            patient_id=current_user.id,
+            organization_id=org.id,
+            grid_size_pixels=grid_size_pixels,
+            card_type=card_type,
+            is_active=True
+        )
+        db.add(calibration)
+        db.commit()
+        db.refresh(calibration)
+        
+        # Delete inactive calibrations for this patient
+        db.query(MensHealthCalibration).filter(
+            MensHealthCalibration.patient_id == current_user.id,
+            MensHealthCalibration.id != calibration.id
+        ).update({"is_active": False})
+        db.commit()
+        
+        # Audit log
+        log_audit(
+            db=db,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+            action='CREATE',
+            resource_type='MENS_HEALTH_CALIBRATION',
+            resource_id=calibration.id,
+            patient_id=current_user.id,
+            status='success',
+            ip_address=request.client.host if request else None,
+            user_agent=request.headers.get('user-agent') if request else None,
+            new_value={"grid_size_pixels": grid_size_pixels, "card_type": card_type}
+        )
+        
+        return {
+            "success": True,
+            "grid_size_pixels": grid_size_pixels,
+            "message": "Calibration successful"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Calibration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Calibration error: {str(e)}")

@@ -69,20 +69,20 @@ async def create_entry(
 @router.get("/entries")
 async def get_all_entries(
     request: Request,
-    current_user: dict = Depends(get_current_user),  # ← CHANGED: User to dict
+    current_user: User = Depends(get_current_user),  # ← CHANGED: User to dict
     service: services.LifelongService = Depends(get_service),
     org: Organization = Depends(get_current_organization),
     db: Session = Depends(get_db)  # ← ADDED: db parameter for doctor filter
 ):
     # ← ADDED: Super admin check
-    if current_user.get('is_super_admin'):
+    if current_user.is_super_admin:
         raise HTTPException(status_code=403, detail="Access denied")
     
     # ← ADDED: Doctor filter
-    if current_user.get('role') == 'doctor':
+    if current_user.role.value == 'doctor':
         from app.models import PatientDoctorAssignment
         assignments = db.query(PatientDoctorAssignment.patient_id).filter(
-            PatientDoctorAssignment.doctor_id == current_user.get('id'),
+            PatientDoctorAssignment.doctor_id == current_user.id,
             PatientDoctorAssignment.end_date == None
         ).all()
         patient_ids = [a[0] for a in assignments]
@@ -98,12 +98,12 @@ async def get_all_entries(
     # ✅ ADD AUDIT LOG (YOUR EXISTING CODE - with .get() changes)
     log_audit(
         db=service.db,
-        user_id=current_user.get('id'),  # ← CHANGED
-        username=current_user.get('username'),  # ← CHANGED
-        user_role=current_user.get('role'),  # ← CHANGED
+        user_id=current_user.id,  # ← CHANGED
+        username=current_user.username,  # ← CHANGED
+        user_role=current_user.role.value,  # ← CHANGED
         action='READ',
         resource_type='LIFELONG_ENTRIES',
-        patient_id=int(current_user.get('id')),  # ← CHANGED
+        patient_id=int(current_user.id),  # ← CHANGED
         status='success',
         purpose='TREATMENT',
         ip_address=request.client.host,

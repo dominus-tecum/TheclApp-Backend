@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TheClapp | Unified Medical Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f4f8;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: linear-gradient(180deg, #0f2b3d 0%, #1a3a4f 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            box-shadow: 2px 0 20px rgba(0,0,0,0.1);
+        }
+
+        .sidebar-header {
+            padding: 30px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 6px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 20px 16px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            border-radius: 14px;
+            color: rgba(255,255,255,0.75);
+            transition: all 0.2s;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.08);
+            color: white;
+        }
+
+        .nav-item.active {
+            background: #2d6a4f;
+            color: white;
+            box-shadow: 0 4px 12px rgba(45,106,79,0.3);
+        }
+
+        .nav-icon {
+            font-size: 22px;
+            width: 32px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            background: #f0f4f8;
+        }
+
+        /* Welcome Screen */
+        .welcome-screen {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+        }
+
+        .welcome-card {
+            text-align: center;
+            max-width: 500px;
+            padding: 50px;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            animation: fadeInUp 0.5s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-logo {
+            font-size: 80px;
+            margin-bottom: 24px;
+        }
+
+        .welcome-card h1 {
+            font-size: 32px;
+            color: #0f2b3d;
+            margin-bottom: 12px;
+        }
+
+        .welcome-card p {
+            color: #64748b;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .welcome-hint {
+            background: #f8fafc;
+            padding: 16px;
+            border-radius: 20px;
+            color: #2d6a4f;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Dashboard containers */
+        .dashboard-page {
+            display: none;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .dashboard-page.active {
+            display: block;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-header">
+        <div class="logo">🏥</div>
+        <h2>TheClapp</h2>
+        <p>Healthcare Management System</p>
+    </div>
+    
+    <nav class="sidebar-nav">
+        <div class="nav-item" onclick="switchDashboard('admin')">
+            <span class="nav-icon">👥</span>
+            <span>Clinic Admin</span>
+        </div>
+        
+        <div class="nav-item" onclick="switchDashboard('medical-records')">
+            <span class="nav-icon">📋</span>
+            <span>Medical Records</span>
+        </div>
+        
+        <div class="nav-item" onclick="switchDashboard('patient-tracking')">
+            <span class="nav-icon">📈</span>
+            <span>Patient Tracking</span>
+        </div>
+    </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+    <!-- Welcome Screen (shown by default) -->
+    <div id="welcomeScreen" class="welcome-screen">
+        <div class="welcome-card">
+            <div class="welcome-logo">🏥✨</div>
+            <h1>Welcome to TheClapp</h1>
+            <p>Your comprehensive healthcare management platform.<br>Select a module from the sidebar to get started.</p>
+            <div class="welcome-hint">
+                📌 Click on any menu item to access the dashboard
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Containers -->
+    <div id="adminDashboard" class="dashboard-page">
+        <iframe src="/static/clinic-admin.html"></iframe>
+    </div>
+    
+    <div id="medicalRecordsDashboard" class="dashboard-page">
+        <iframe src="/static/medical_records.html"></iframe>
+    </div>
+    
+    <div id="patientTrackingDashboard" class="dashboard-page">
+        <iframe src="/static/clinic-dashboard.html"></iframe>
+    </div>
+</div>
+
+<script>
+    function switchDashboard(dashboard) {
+        // Hide welcome screen
+        document.getElementById('welcomeScreen').style.display = 'none';
+        
+        // Update active state in sidebar
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        // Mark clicked item as active
+        let clickedItem = null;
+        if (dashboard === 'admin') {
+            clickedItem = navItems[0];
+        } else if (dashboard === 'medical-records') {
+            clickedItem = navItems[1];
+        } else if (dashboard === 'patient-tracking') {
+            clickedItem = navItems[2];
+        }
+        if (clickedItem) clickedItem.classList.add('active');
+        
+        // Hide all dashboards
+        document.getElementById('adminDashboard').classList.remove('active');
+        document.getElementById('medicalRecordsDashboard').classList.remove('active');
+        document.getElementById('patientTrackingDashboard').classList.remove('active');
+        
+        // Show selected dashboard
+        if (dashboard === 'admin') {
+            document.getElementById('adminDashboard').classList.add('active');
+        } else if (dashboard === 'medical-records') {
+            document.getElementById('medicalRecordsDashboard').classList.add('active');
+        } else if (dashboard === 'patient-tracking') {
+            document.getElementById('patientTrackingDashboard').classList.add('active');
+        }
+    }
+</script>
+
+</body>
+</html>

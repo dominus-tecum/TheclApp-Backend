@@ -81,7 +81,7 @@ class GeneralProgressService:
             else:
                 print(f"🆕 GENERAL SERVICES: Creating new entry for {entry_data.get('submission_date')}")
                 
-                db_entry = GeneralHealthEntry(
+            db_entry = GeneralHealthEntry(
                     patient_id=entry_data.get('patient_id'),
                     patient_name=entry_data.get('patient_name', ''),
                     submission_date=entry_data.get('submission_date'),
@@ -96,12 +96,12 @@ class GeneralProgressService:
                     urgency_status=urgency_status
                 )
                 
-                self.db.add(db_entry)
-                self.db.commit()
-                self.db.refresh(db_entry)
+            self.db.add(db_entry)
+            self.db.commit()
+            self.db.refresh(db_entry)
                 
-                print(f"✅ GENERAL SERVICES: Entry created successfully with ID: {db_entry.id}")
-                return db_entry
+            print(f"✅ GENERAL SERVICES: Entry created successfully with ID: {db_entry.id}")
+            return db_entry
             
         except Exception as e:
             self.db.rollback()
