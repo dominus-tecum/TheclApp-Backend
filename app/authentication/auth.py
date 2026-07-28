@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -10,24 +10,27 @@ from app.database import get_db
 from app.models import User, UserRole
 from app.core.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+# Direct bcrypt functions (no passlib)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    plain_bytes = plain_password.encode('utf-8')[:72]
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(plain_bytes, hashed_bytes)
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def get_password_hash(password: str) -> str:
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 def authenticate_user(db: Session, email: str, password: str):
     user = db.query(User).filter(User.email == email).first()
     if not user:
         return False
-    if user.deleted_at is not None:  # ← ADD THIS
-        return False                  # ← ADD THIS
+    if user.deleted_at is not None:
+        return False
     if not verify_password(password, user.password_hash):
         return False
     return user
@@ -73,38 +76,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         print(f"❌ [AUTH] User not found: {username}")
         raise credentials_exception
 
-
-        # ========== ADD THIS BLOCK ==========
     if user.deleted_at is not None:
         print(f"❌ [AUTH] Account deleted: {username}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account has been deactivated. Please contact support."
         )
-    # ===================================
-
-
-
-
-
-    
-    # CONVERT TO DICTIONARY - THIS IS CRITICAL
-    #user_dict = {
-    #    "id": str(user.id),
-    #    "username": user.username,
-    #    "email": user.email,
-    #    "name": user.name,
-    #    "role": user.role.value,
-    #    "phone_number": user.phone_number,
-    #    "department": user.department,
-    #    "specialization": user.specialization,
-    #    "is_super_admin": user.is_super_admin == 1,
-    #    "organization_id": user.organization_id 
-    #}
-    
-    #print(f"✅ [AUTH] Returning user: {user.username} (ID: {user.id})")
-    #return user_dict
-
 
     print(f"✅ [AUTH] Returning user: {user.username} (ID: {user.id})")
-    return user    
+    return user

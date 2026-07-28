@@ -3,7 +3,7 @@ from app.database_base import Base
 import enum
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum, Boolean, JSON, Text
-
+from app.pharmacy.models import Pharmacy
 
 # Define allowed roles
 class UserRole(enum.Enum):
